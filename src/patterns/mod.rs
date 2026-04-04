@@ -10,13 +10,41 @@ use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Top-level pattern file fetched from CDN or cache
+/// Top-level pattern file fetched from CDN or cache.
+/// CDN format groups patterns by language: { languages: [{ language, patterns }] }
 #[derive(Debug, Clone, Deserialize)]
 pub struct PatternFile {
     pub version: String,
     #[allow(dead_code)]
     pub updated_at: String,
+    pub languages: Vec<LanguagePatterns>,
+}
+
+/// Patterns grouped by language (matches CDN JSON structure)
+#[derive(Debug, Clone, Deserialize)]
+pub struct LanguagePatterns {
+    pub language: String,
     pub patterns: Vec<Pattern>,
+}
+
+impl PatternFile {
+    /// Flatten language-grouped patterns into a single vec, injecting the language field
+    pub fn into_patterns(self) -> Vec<Pattern> {
+        self.languages
+            .into_iter()
+            .flat_map(|lp| {
+                let lang = lp.language;
+                lp.patterns.into_iter().map(move |mut p| {
+                    // Per-language file patterns don't have a languages field in CDN JSON,
+                    // so inject it from the parent group
+                    if p.languages.is_empty() {
+                        p.languages = vec![lang.clone()];
+                    }
+                    p
+                })
+            })
+            .collect()
+    }
 }
 
 /// A single pattern that matches on import_gate and detections
@@ -27,7 +55,9 @@ pub struct Pattern {
     pub name: String,
     #[allow(dead_code)]
     pub description: String,
+    #[serde(default)]
     pub languages: Vec<String>,
+    #[serde(default)]
     #[allow(dead_code)]
     pub file_patterns: Vec<String>,
     pub import_gate: Vec<String>,
@@ -162,7 +192,7 @@ impl PatternRegistry {
                                 match serde_json::from_str::<PatternFile>(&body_str) {
                                     Ok(pattern_file) => {
                                         let version = pattern_file.version.clone();
-                                        let patterns = pattern_file.patterns;
+                                        let patterns = pattern_file.into_patterns();
 
                                         Self {
                                             patterns,
@@ -206,7 +236,7 @@ impl PatternRegistry {
                 match serde_json::from_str::<PatternFile>(&content) {
                     Ok(pattern_file) => {
                         let version = pattern_file.version.clone();
-                        let patterns = pattern_file.patterns;
+                        let patterns = pattern_file.into_patterns();
                         Self {
                             patterns,
                             version,
@@ -452,21 +482,24 @@ mod tests {
         let json = r#"{
             "version": "1.0",
             "updated_at": "2026-04-04T00:00:00Z",
-            "patterns": [
+            "languages": [
                 {
-                    "id": "redis-py",
-                    "name": "redis-py",
-                    "description": "Python Redis client",
-                    "languages": ["python"],
-                    "file_patterns": ["**/*.py"],
-                    "import_gate": ["import redis", "from redis"],
-                    "detections": [
+                    "language": "python",
+                    "patterns": [
                         {
-                            "match": "Redis(",
-                            "kind": "connection",
-                            "protocol": "redis",
-                            "confidence": "high",
-                            "target_extraction": "first_string_arg"
+                            "id": "redis-py",
+                            "name": "redis-py",
+                            "description": "Python Redis client",
+                            "import_gate": ["import redis", "from redis"],
+                            "detections": [
+                                {
+                                    "match": "Redis(",
+                                    "kind": "connection",
+                                    "protocol": "redis",
+                                    "confidence": "high",
+                                    "target_extraction": "first_string_arg"
+                                }
+                            ]
                         }
                     ]
                 }
@@ -475,9 +508,10 @@ mod tests {
 
         let pattern_file: PatternFile = serde_json::from_str(json).expect("parse redis-py");
         assert_eq!(pattern_file.version, "1.0");
-        assert_eq!(pattern_file.patterns.len(), 1);
+        let patterns = pattern_file.into_patterns();
+        assert_eq!(patterns.len(), 1);
 
-        let pattern = &pattern_file.patterns[0];
+        let pattern = &patterns[0];
         assert_eq!(pattern.id, "redis-py");
         assert_eq!(pattern.languages, vec!["python"]);
         assert_eq!(pattern.import_gate.len(), 2);
@@ -492,13 +526,11 @@ mod tests {
         let json = r#"{
             "version": "1.0",
             "updated_at": "2026-04-04T00:00:00Z",
-            "patterns": [
+            "languages": [{"language": "python", "patterns": [
                 {
                     "id": "boto3-sqs",
                     "name": "boto3-sqs",
                     "description": "AWS SQS",
-                    "languages": ["python"],
-                    "file_patterns": ["**/*.py"],
                     "import_gate": ["boto3"],
                     "detections": [
                         {
@@ -510,11 +542,12 @@ mod tests {
                         }
                     ]
                 }
-            ]
+            ]}]
         }"#;
 
         let pattern_file: PatternFile = serde_json::from_str(json).expect("parse boto3");
-        let detection = &pattern_file.patterns[0].detections[0];
+        let patterns = pattern_file.into_patterns();
+        let detection = &patterns[0].detections[0];
 
         match &detection.target_extraction {
             TargetExtraction::NamedArg(key) => assert_eq!(key, "QueueUrl"),
@@ -527,13 +560,11 @@ mod tests {
         let json = r#"{
             "version": "1.0",
             "updated_at": "2026-04-04T00:00:00Z",
-            "patterns": [
+            "languages": [{"language": "python", "patterns": [
                 {
                     "id": "test",
                     "name": "test",
                     "description": "test",
-                    "languages": ["python"],
-                    "file_patterns": ["**/*.py"],
                     "import_gate": [],
                     "detections": [
                         {
@@ -545,11 +576,12 @@ mod tests {
                         }
                     ]
                 }
-            ]
+            ]}]
         }"#;
 
         let pattern_file: PatternFile = serde_json::from_str(json).expect("parse unknown");
-        let detection = &pattern_file.patterns[0].detections[0];
+        let patterns = pattern_file.into_patterns();
+        let detection = &patterns[0].detections[0];
 
         // Should gracefully become None
         match &detection.target_extraction {
@@ -563,21 +595,20 @@ mod tests {
         let json = r#"{
             "version": "1.0",
             "updated_at": "2026-04-04T00:00:00Z",
-            "patterns": [
+            "languages": [{"language": "python", "patterns": [
                 {
                     "id": "test",
                     "name": "test",
                     "description": "test",
-                    "languages": ["python"],
-                    "file_patterns": ["**/*.py"],
                     "import_gate": [],
                     "detections": []
                 }
-            ]
+            ]}]
         }"#;
 
         let pattern_file: PatternFile = serde_json::from_str(json).expect("parse empty gate");
-        assert_eq!(pattern_file.patterns[0].import_gate.len(), 0);
+        let patterns = pattern_file.into_patterns();
+        assert_eq!(patterns[0].import_gate.len(), 0);
     }
 
     // TASK 2: Fetch, cache, and fallback tests
