@@ -379,6 +379,12 @@ fn extract_http_clients(
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
     let file_content = &*file.content;
+
+    // Content gate: check for fetch() before running query
+    if !file_content.contains("fetch(") {
+        return;
+    }
+
     let mut parser = Parser::new();
     if parser.set_language(lang).is_err() {
         return;

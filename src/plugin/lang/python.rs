@@ -83,8 +83,10 @@ fn django_urlpatterns_query() -> &'static Query {
     })
 }
 
-/// Compile HTTP client query once via OnceLock.
-fn http_client_query() -> &'static Query {
+/// Compile unified member call query for HTTP and database clients.
+/// Captures @lib, @method, and the first string argument (captured as @arg).
+/// Post-filters in detectors distinguish between HTTP and DB clients by library/method names.
+fn member_call_query() -> &'static Query {
     static QUERY: OnceLock<Query> = OnceLock::new();
     QUERY.get_or_init(|| {
         let src = r#"
@@ -92,26 +94,10 @@ fn http_client_query() -> &'static Query {
   function: (attribute
     object: (identifier) @lib
     attribute: (identifier) @method)
-  arguments: (argument_list (string) @url (_)*))
+  arguments: (argument_list (string) @arg (_)*))
 "#;
         let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
-        Query::new(&lang, src).expect("invalid http_client query")
-    })
-}
-
-/// Compile database client query once via OnceLock.
-fn db_client_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
-    QUERY.get_or_init(|| {
-        let src = r#"
-(call
-  function: (attribute
-    object: (identifier) @lib
-    attribute: (identifier) @method)
-  arguments: (argument_list (string) @dsn (_)*))
-"#;
-        let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
-        Query::new(&lang, src).expect("invalid db_client query")
+        Query::new(&lang, src).expect("invalid member_call query")
     })
 }
 
@@ -126,6 +112,20 @@ fn grpc_stub_query() -> &'static Query {
 "#;
         let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
         Query::new(&lang, src).expect("invalid grpc_stub query")
+    })
+}
+
+/// Compile Modbus client instantiation query once via OnceLock.
+fn modbus_client_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        let src = r#"
+(call
+  function: (identifier) @client
+  arguments: (argument_list (_)*))
+"#;
+        let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
+        Query::new(&lang, src).expect("invalid modbus_client query")
     })
 }
 
@@ -355,7 +355,7 @@ fn extract_http_clients(
     let mut connections = Vec::new();
     let http_libs = ["requests", "httpx", "urllib"];
     let http_methods = ["get", "post", "put", "delete", "patch"];
-    let query = http_client_query();
+    let query = member_call_query();
 
     for file in source_files {
         let source_bytes = file.content.as_bytes();
@@ -394,7 +394,7 @@ fn extract_http_clients(
                 match name {
                     "lib" => lib = text,
                     "method" => method = text,
-                    "url" => url = text,
+                    "arg" => url = text,
                     _ => {}
                 }
             }
@@ -487,7 +487,7 @@ fn extract_db_clients(
     parser: &mut Parser,
 ) -> Vec<ConnectionInfo> {
     let mut connections = Vec::new();
-    let query = db_client_query();
+    let query = member_call_query();
 
     for file in source_files {
         let source_bytes = file.content.as_bytes();
@@ -533,7 +533,7 @@ fn extract_db_clients(
 
                     match name {
                         "lib" => lib_name = text,
-                        "dsn" => dsn = text,
+                        "arg" => dsn = text,
                         _ => {}
                     }
                 }
@@ -884,22 +884,22 @@ fn extract_industrial_protocol_clients(
                 None => continue,
             };
 
-            let stub_query = grpc_stub_query();
+            let modbus_query = modbus_client_query();
             let mut cursor = QueryCursor::new();
-            let mut matches = cursor.matches(stub_query, tree.root_node(), source_bytes);
+            let mut matches = cursor.matches(modbus_query, tree.root_node(), source_bytes);
 
             while let Some(m) = matches.next() {
                 for capture in m.captures {
-                    let name = stub_query.capture_names()[capture.index as usize];
-                    if name == "stub" {
-                        let stub_name = capture
+                    let name = modbus_query.capture_names()[capture.index as usize];
+                    if name == "client" {
+                        let client_name = capture
                             .node
                             .utf8_text(source_bytes)
                             .unwrap_or("")
                             .trim_matches('"')
                             .trim_matches('\'');
 
-                        if stub_name == "ModbusTcpClient" {
+                        if client_name == "ModbusTcpClient" {
                             connections.push(ConnectionInfo {
                                 source_service: source_service.unwrap_or("").to_string(),
                                 target_name: "modbus_device".to_string(),
@@ -913,7 +913,7 @@ fn extract_industrial_protocol_clients(
                                 ),
                                 confidence: Confidence::High,
                                 extraction_method: "python_modbus_client".to_string(),
-                                evidence: Some(stub_name.to_string()),
+                                evidence: Some(client_name.to_string()),
                             });
                         }
                     }

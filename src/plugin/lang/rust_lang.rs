@@ -317,52 +317,54 @@ impl LanguagePlugin for RustLangPlugin {
                 }
             }
 
-            // Detect reqwest clients
-            let query = reqwest_query(&lang);
-            let mut cursor = QueryCursor::new();
-            let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
+            // Detect reqwest clients (gate on frameworks.reqwest)
+            if frameworks.reqwest {
+                let query = reqwest_query(&lang);
+                let mut cursor = QueryCursor::new();
+                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
 
-            while let Some(m) = matches.next() {
-                let mut crate_name = String::new();
-                let mut method = String::new();
-                let mut url = String::new();
-                let mut line = 0;
-                let mut evidence = String::new();
+                while let Some(m) = matches.next() {
+                    let mut crate_name = String::new();
+                    let mut method = String::new();
+                    let mut url = String::new();
+                    let mut line = 0;
+                    let mut evidence = String::new();
 
-                for capture in m.captures {
-                    let cap_name = query.capture_names()[capture.index as usize];
-                    let text = capture
-                        .node
-                        .utf8_text(file_bytes)
-                        .unwrap_or("")
-                        .trim_matches('"');
-                    line = capture.node.start_position().row + 1;
-                    evidence = format_evidence(text);
+                    for capture in m.captures {
+                        let cap_name = query.capture_names()[capture.index as usize];
+                        let text = capture
+                            .node
+                            .utf8_text(file_bytes)
+                            .unwrap_or("")
+                            .trim_matches('"');
+                        line = capture.node.start_position().row + 1;
+                        evidence = format_evidence(text);
 
-                    match cap_name {
-                        "crate" => crate_name = text.to_string(),
-                        "method" => method = text.to_string(),
-                        "url" => url = text.to_string(),
-                        _ => {}
+                        match cap_name {
+                            "crate" => crate_name = text.to_string(),
+                            "method" => method = text.to_string(),
+                            "url" => url = text.to_string(),
+                            _ => {}
+                        }
                     }
-                }
 
-                if crate_name == "reqwest"
-                    || method.to_lowercase().as_str().contains("get")
-                    || method.to_lowercase().as_str().contains("post")
-                    || method.to_lowercase().as_str().contains("put")
-                {
-                    connections.push(ConnectionInfo {
-                        source_service: source_service.unwrap_or("").to_string(),
-                        target_name: String::new(),
-                        protocol: "rest".to_string(),
-                        method: Some(method),
-                        path: Some(url),
-                        source_file: format_source_file(&file.relative_path, line),
-                        confidence: Confidence::High,
-                        extraction_method: "ast_reqwest_client".to_string(),
-                        evidence: Some(evidence),
-                    });
+                    if crate_name == "reqwest"
+                        || method.to_lowercase().as_str().contains("get")
+                        || method.to_lowercase().as_str().contains("post")
+                        || method.to_lowercase().as_str().contains("put")
+                    {
+                        connections.push(ConnectionInfo {
+                            source_service: source_service.unwrap_or("").to_string(),
+                            target_name: String::new(),
+                            protocol: "rest".to_string(),
+                            method: Some(method),
+                            path: Some(url),
+                            source_file: format_source_file(&file.relative_path, line),
+                            confidence: Confidence::High,
+                            extraction_method: "ast_reqwest_client".to_string(),
+                            evidence: Some(evidence),
+                        });
+                    }
                 }
             }
 

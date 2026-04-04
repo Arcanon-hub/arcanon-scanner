@@ -43,19 +43,15 @@ const QUERY_HTTP_HANDLEFUNC: &str = r#"(call_expression
     (interpreted_string_literal) @path
     (_) @handler))"#;
 
-const QUERY_HTTP_CLIENT: &str = r#"(call_expression
+/// Unified query for client connections: pkg.fn(args)
+/// Captures @obj (or @pkg), @method (or @fn), and all arguments.
+/// Post-filters in detectors distinguish which library/method is which.
+const QUERY_PKG_CALL: &str = r#"(call_expression
   function: (selector_expression
     operand: (identifier) @obj
     field: (field_identifier) @method)
   arguments: (argument_list
-    (interpreted_string_literal) @url))"#;
-
-const QUERY_GRPC_DIAL: &str = r#"(call_expression
-  function: (selector_expression
-    operand: (identifier) @pkg
-    field: (field_identifier) @fn)
-  arguments: (argument_list
-    (interpreted_string_literal) @addr
+    (interpreted_string_literal)? @url
     (_)*))"#;
 
 const QUERY_SQL_OPEN: &str = r#"(call_expression
@@ -71,27 +67,12 @@ const QUERY_KAFKA_PRODUCER: &str = r#"(call_expression
     operand: (identifier) @obj
     field: (field_identifier) @method))"#;
 
-const QUERY_CHI_ROUTES: &str = r#"(call_expression
-  function: (selector_expression
-    operand: (identifier) @router
-    field: (field_identifier) @method)
-  arguments: (argument_list
-    (interpreted_string_literal) @path
-    (_)+ @handlers))"#;
-
 const QUERY_GORILLA_ROUTES: &str = r#"(call_expression
   function: (selector_expression
     operand: (identifier) @router
     field: (field_identifier) @method)
   arguments: (argument_list
     (interpreted_string_literal) @path))"#;
-
-const QUERY_NATS_CONNECT: &str = r#"(call_expression
-  function: (selector_expression
-    operand: (identifier) @pkg
-    field: (field_identifier) @fn)
-  arguments: (argument_list
-    (interpreted_string_literal) @url))"#;
 
 const QUERY_NATS_SUBSCRIBE: &str = r#"(call_expression
   function: (selector_expression
@@ -100,18 +81,6 @@ const QUERY_NATS_SUBSCRIBE: &str = r#"(call_expression
   arguments: (argument_list
     (interpreted_string_literal) @subject
     (_)*))"#;
-
-const QUERY_MONGO_CONNECT: &str = r#"(call_expression
-  function: (selector_expression
-    operand: (identifier) @pkg
-    field: (field_identifier) @fn)
-  arguments: (_)*)"#;
-
-const QUERY_REDIS_CLIENT: &str = r#"(call_expression
-  function: (selector_expression
-    operand: (identifier) @pkg
-    field: (field_identifier) @fn)
-  arguments: (argument_list (_)*))"#;
 
 /// Detect frameworks by scanning go.mod file content.
 fn detect_frameworks(files: &[crate::plugin::FileContext]) -> GoFrameworks {
@@ -324,7 +293,7 @@ fn detect_routes(
 
     // Chi routes (same AST pattern as Gin/Echo)
     if frameworks.chi {
-        let matches = query_matches_grouped(language, source, QUERY_CHI_ROUTES);
+        let matches = query_matches_grouped(language, source, QUERY_GIN_ROUTES);
         for m in matches {
             if let (Some(method), Some(path)) = (m.get("method"), m.get("path")) {
                 let method_upper = method.to_uppercase();
@@ -406,7 +375,7 @@ fn detect_http_clients(
     result: &mut ExtractionResult,
     source: &str,
 ) {
-    let matches = query_matches_grouped(language, source, QUERY_HTTP_CLIENT);
+    let matches = query_matches_grouped(language, source, QUERY_PKG_CALL);
 
     for m in matches {
         if let (Some(obj), Some(method)) = (m.get("obj"), m.get("method")) {
@@ -447,14 +416,15 @@ fn detect_grpc(
         return;
     }
 
-    let matches = query_matches_grouped(language, source, QUERY_GRPC_DIAL);
+    let matches = query_matches_grouped(language, source, QUERY_PKG_CALL);
 
     for m in matches {
-        if let (Some(pkg), Some(fn_name), Some(addr)) = (m.get("pkg"), m.get("fn"), m.get("addr")) {
-            if pkg == "grpc"
-                && (fn_name == "Dial" || fn_name == "DialContext" || fn_name == "NewClient")
+        if let (Some(obj), Some(method), Some(url)) = (m.get("obj"), m.get("method"), m.get("url"))
+        {
+            if obj == "grpc"
+                && (method == "Dial" || method == "DialContext" || method == "NewClient")
             {
-                let addr_str = extract_string_literal(addr);
+                let addr_str = extract_string_literal(url);
                 let target_name = addr_str.split(':').next().unwrap_or(&addr_str).to_string();
 
                 if let Some(service_name) = scope_to_service(&file.path, &ctx.service_roots) {
@@ -467,7 +437,7 @@ fn detect_grpc(
                         source_file: format!("{}:1", file.relative_path),
                         confidence: Confidence::High,
                         extraction_method: "go-grpc-dial".to_string(),
-                        evidence: Some(format!("grpc.{}(\"{}\")", fn_name, addr_str)),
+                        evidence: Some(format!("grpc.{}(\"{}\")", method, addr_str)),
                     });
                 }
             }
@@ -540,10 +510,11 @@ fn detect_nats(
     }
 
     // Detect Connect calls
-    let matches = query_matches_grouped(language, source, QUERY_NATS_CONNECT);
+    let matches = query_matches_grouped(language, source, QUERY_PKG_CALL);
     for m in matches {
-        if let (Some(pkg), Some(fn_name), Some(url)) = (m.get("pkg"), m.get("fn"), m.get("url")) {
-            if pkg == "nats" && fn_name == "Connect" {
+        if let (Some(obj), Some(method), Some(url)) = (m.get("obj"), m.get("method"), m.get("url"))
+        {
+            if obj == "nats" && method == "Connect" {
                 let url_str = extract_string_literal(url);
                 let target_name = url_str
                     .split("://")
@@ -614,10 +585,10 @@ fn detect_mongodb(
         return;
     }
 
-    let matches = query_matches_grouped(language, source, QUERY_MONGO_CONNECT);
+    let matches = query_matches_grouped(language, source, QUERY_PKG_CALL);
     for m in matches {
-        if let (Some(pkg), Some(fn_name)) = (m.get("pkg"), m.get("fn")) {
-            if pkg == "mongo" && fn_name == "Connect" {
+        if let (Some(obj), Some(method)) = (m.get("obj"), m.get("method")) {
+            if obj == "mongo" && method == "Connect" {
                 if let Some(service_name) = scope_to_service(&file.path, &ctx.service_roots) {
                     result.connections.push(ConnectionInfo {
                         source_service: service_name.to_string(),
@@ -654,10 +625,10 @@ fn detect_redis(
         return;
     }
 
-    let matches = query_matches_grouped(language, source, QUERY_REDIS_CLIENT);
+    let matches = query_matches_grouped(language, source, QUERY_PKG_CALL);
     for m in matches {
-        if let (Some(pkg), Some(fn_name)) = (m.get("pkg"), m.get("fn")) {
-            if pkg == "redis" && fn_name == "NewClient" {
+        if let (Some(obj), Some(method)) = (m.get("obj"), m.get("method")) {
+            if obj == "redis" && method == "NewClient" {
                 if let Some(service_name) = scope_to_service(&file.path, &ctx.service_roots) {
                     result.connections.push(ConnectionInfo {
                         source_service: service_name.to_string(),
@@ -903,7 +874,7 @@ func main() {
     r.Post("/api/users", createUser)
 }
 "#;
-        let matches = query_matches_grouped(&language, source, QUERY_CHI_ROUTES);
+        let matches = query_matches_grouped(&language, source, QUERY_GIN_ROUTES);
 
         assert!(!matches.is_empty(), "Should detect chi router method calls");
 
@@ -961,7 +932,7 @@ func main() {
     http.Post("http://api.example.com/data", "application/json", body)
 }
 "#;
-        let matches = query_matches_grouped(&language, source, QUERY_HTTP_CLIENT);
+        let matches = query_matches_grouped(&language, source, QUERY_PKG_CALL);
 
         assert!(!matches.is_empty(), "Should detect http.Get/Post calls");
     }
@@ -977,7 +948,7 @@ func main() {
     conn2, _ := grpc.DialContext(ctx, "user-svc:50052")
 }
 "#;
-        let matches = query_matches_grouped(&language, source, QUERY_GRPC_DIAL);
+        let matches = query_matches_grouped(&language, source, QUERY_PKG_CALL);
 
         assert!(!matches.is_empty(), "Should detect grpc.Dial calls");
     }
@@ -1010,7 +981,7 @@ func main() {
     nc.Publish("subject.name", []byte("msg"))
 }
 "#;
-        let matches = query_matches_grouped(&language, source, QUERY_NATS_CONNECT);
+        let matches = query_matches_grouped(&language, source, QUERY_PKG_CALL);
 
         assert!(!matches.is_empty(), "Should detect nats.Connect calls");
 
@@ -1051,7 +1022,7 @@ func main() {
     client, _ := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
 }
 "#;
-        let matches = query_matches_grouped(&language, source, QUERY_MONGO_CONNECT);
+        let matches = query_matches_grouped(&language, source, QUERY_PKG_CALL);
 
         assert!(!matches.is_empty(), "Should detect mongo.Connect calls");
     }
@@ -1068,7 +1039,7 @@ func main() {
     })
 }
 "#;
-        let matches = query_matches_grouped(&language, source, QUERY_REDIS_CLIENT);
+        let matches = query_matches_grouped(&language, source, QUERY_PKG_CALL);
 
         assert!(!matches.is_empty(), "Should detect redis.NewClient calls");
     }

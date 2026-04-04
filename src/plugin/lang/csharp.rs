@@ -178,55 +178,90 @@ fn extract_method_routes(
         let mut current_http_attr = String::new();
         let mut current_method_path = String::new();
         let mut current_action_name = String::new();
-        let mut _line = 1;
 
         for m in matches {
+            // Reset state at the START of each new match (when we see @http_attr)
+            // This ensures captures from different methods don't interleave
             if m.capture_name == "http_attr" {
-                current_http_attr = m.node_text.clone();
-            } else if m.capture_name == "method_path" {
-                current_method_path = m.node_text.clone();
-                _line = m.line;
-            } else if m.capture_name == "action_name" {
-                current_action_name = m.node_text.clone();
-            }
+                // If we have a previous endpoint, process it before resetting
+                if !current_action_name.is_empty()
+                    && !current_http_attr.is_empty()
+                    && http_methods.contains(&current_http_attr.as_str())
+                {
+                    let http_method = current_http_attr
+                        .strip_prefix("Http")
+                        .unwrap_or("GET")
+                        .to_uppercase();
 
-            // When we have all three pieces, we can create an endpoint
-            if !current_http_attr.is_empty()
-                && !current_action_name.is_empty()
-                && http_methods.contains(&current_http_attr.as_str())
-            {
-                let http_method = current_http_attr
-                    .strip_prefix("Http")
-                    .unwrap_or("GET")
-                    .to_uppercase();
+                    let path = if current_method_path.is_empty() {
+                        "/".to_string()
+                    } else if current_method_path.starts_with('/') {
+                        current_method_path.clone()
+                    } else {
+                        format!("/{}", current_method_path)
+                    };
 
-                let path = if current_method_path.is_empty() {
-                    "/".to_string()
-                } else if current_method_path.starts_with('/') {
-                    current_method_path.clone()
-                } else {
-                    format!("/{}", current_method_path)
-                };
+                    let service_name = scope_to_service(&file.path, &ctx.service_roots)
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
 
-                let service_name = scope_to_service(&file.path, &ctx.service_roots)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-
-                result.endpoints.push(EndpointInfo {
-                    service_name,
-                    method: http_method,
-                    path,
-                    handler: Some(current_action_name.clone()),
-                    kind: "rest".to_string(),
-                    confidence: Confidence::Medium,
-                    extraction_method: "csharp-attribute".to_string(),
-                });
+                    result.endpoints.push(EndpointInfo {
+                        service_name,
+                        method: http_method,
+                        path,
+                        handler: Some(current_action_name.clone()),
+                        kind: "rest".to_string(),
+                        confidence: Confidence::Medium,
+                        extraction_method: "csharp-attribute".to_string(),
+                    });
+                }
 
                 // Reset for next match
                 current_http_attr.clear();
                 current_method_path.clear();
                 current_action_name.clear();
             }
+
+            // Accumulate captures
+            match m.capture_name.as_str() {
+                "http_attr" => current_http_attr = m.node_text.clone(),
+                "method_path" => current_method_path = m.node_text.clone(),
+                "action_name" => current_action_name = m.node_text.clone(),
+                _ => {}
+            }
+        }
+
+        // Process the last endpoint if one is pending
+        if !current_action_name.is_empty()
+            && !current_http_attr.is_empty()
+            && http_methods.contains(&current_http_attr.as_str())
+        {
+            let http_method = current_http_attr
+                .strip_prefix("Http")
+                .unwrap_or("GET")
+                .to_uppercase();
+
+            let path = if current_method_path.is_empty() {
+                "/".to_string()
+            } else if current_method_path.starts_with('/') {
+                current_method_path.clone()
+            } else {
+                format!("/{}", current_method_path)
+            };
+
+            let service_name = scope_to_service(&file.path, &ctx.service_roots)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            result.endpoints.push(EndpointInfo {
+                service_name,
+                method: http_method,
+                path,
+                handler: Some(current_action_name.clone()),
+                kind: "rest".to_string(),
+                confidence: Confidence::Medium,
+                extraction_method: "csharp-attribute".to_string(),
+            });
         }
     }
 }

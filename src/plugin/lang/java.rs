@@ -268,7 +268,7 @@ fn extract_http_method(
                 "PutMapping" => "PUT",
                 "DeleteMapping" => "DELETE",
                 "PatchMapping" => "PATCH",
-                "RequestMapping" => "GET",
+                "RequestMapping" => "",
                 _ => continue,
             };
 
