@@ -63,7 +63,14 @@ Plans:
   3. A corrupted YAML file causes a logged warning and the scan continues; a plugin panic is caught and other plugins complete normally
   4. The merger produces one service entry for a service detected by both the Dockerfile plugin and the compose plugin (no duplicates), with connections aggregated from both
   5. The upload module retries on a 429 response and succeeds on the second attempt; a 409 (duplicate) response exits 0
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Infrastructure config plugins: DockerfilePlugin, EnvPlugin, ComposePlugin, KubernetesPlugin
+- [ ] 03-02-PLAN.md — Spec config plugins: OpenApiPlugin (OAS 3.0 + Swagger 2.0), ProtoPlugin, GraphqlPlugin, AsyncApiPlugin
+- [ ] 03-03-PLAN.md — Core pipeline: merger (service dedup + spec-override), resolver (path normalization + intra-repo matching), payload assembler (ScanPayloadV1)
+- [ ] 03-04-PLAN.md — Upload module: POST with retry (1s/2s/4s), response codes (202/409/429/5xx), file fallback; fault-tolerance wiring (FTOL-02/03/04)
+- [ ] 03-05-PLAN.md — Scanner orchestration: default_plugins() registry, rayon parallel execution, catch_unwind per plugin, --dry-run/--output wiring, end-to-end test
 
 ### Phase 4: Language Plugins and Hardening
 **Goal**: All 7 language plugins produce correct endpoints and connections from AST queries, monorepo service scoping works by nearest-ancestor, and the full scanner passes end-to-end against a polyglot fixture repo
@@ -95,5 +102,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/4 | In progress | - |
 | 2. Infrastructure | 0/3 | Not started | - |
-| 3. Pipeline and Config Plugins | 0/TBD | Not started | - |
+| 3. Pipeline and Config Plugins | 0/5 | Not started | - |
 | 4. Language Plugins and Hardening | 0/8 | Not started | - |
