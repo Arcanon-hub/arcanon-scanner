@@ -60,6 +60,11 @@ const QUERY_SQL_OPEN: &str = r#"(call_expression
     (interpreted_string_literal) @driver
     (_)))"#;
 
+const QUERY_KAFKA_PRODUCER: &str = r#"(call_expression
+  function: (selector_expression
+    operand: (identifier) @obj
+    field: (field_identifier) @method))"#;
+
 /// Detect frameworks by scanning go.mod file content.
 fn detect_frameworks(files: &[crate::plugin::FileContext]) -> GoFrameworks {
     let mut frameworks = GoFrameworks {
@@ -144,6 +149,9 @@ impl LanguagePlugin for GoPlugin {
 
             // gRPC detection
             detect_grpc(&helper, file, ctx, &mut result, source);
+
+            // Kafka detection
+            detect_kafka(&helper, file, ctx, &mut result, source);
 
             // Database connection detection
             detect_database(&helper, file, ctx, &mut result, source);
@@ -288,6 +296,52 @@ fn detect_grpc(
                         confidence: Confidence::High,
                         extraction_method: "go-grpc-dial".to_string(),
                         evidence: Some(format!("grpc.{}(\"{}\")", fn_name, addr_str)),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Detect Kafka producer calls
+fn detect_kafka(
+    helper: &crate::ast::AstHelper,
+    file: &crate::plugin::FileContext,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+    source: &str,
+) {
+    // Gate: check for Kafka library in dependencies
+    // For now, we check source for kafka imports
+    if !source.contains("kafka") && !source.contains("Kafka") {
+        return;
+    }
+
+    let matches = helper.query_matches(source, QUERY_KAFKA_PRODUCER);
+
+    for m in group_matches_by_query(&matches) {
+        if let (Some(obj), Some(method)) = (m.get("obj"), m.get("method")) {
+            let valid_method = [
+                "WriteMessages",
+                "Write",
+                "Produce",
+                "ProduceMessage",
+                "Send",
+            ]
+            .contains(&method.as_str());
+
+            if valid_method {
+                if let Some(service_name) = scope_to_service(&file.path, &ctx.service_roots) {
+                    result.connections.push(ConnectionInfo {
+                        source_service: service_name.to_string(),
+                        target_name: "kafka-broker".to_string(),
+                        protocol: "kafka".to_string(),
+                        method: Some(method.to_string()),
+                        path: None,
+                        source_file: format!("{}:1", file.relative_path),
+                        confidence: Confidence::Medium,
+                        extraction_method: "go-kafka-producer".to_string(),
+                        evidence: Some(format!("{}.{}(...)", obj, method)),
                     });
                 }
             }
