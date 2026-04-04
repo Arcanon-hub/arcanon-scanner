@@ -348,6 +348,320 @@ fn extract_nestjs_routes(
     }
 }
 
+/// Extract HTTP client calls (fetch, axios, got, etc.)
+fn extract_http_clients(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file_content: &str,
+    relative_path: &str,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    // Check for fetch calls
+    let fetch_query = fetch_query(lang);
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(fetch_query, tree.root_node(), file_content.as_bytes());
+
+    let capture_names = fetch_query.capture_names();
+
+    while let Some(m) = matches.next() {
+        let mut fn_name = String::new();
+        let mut url_arg = String::new();
+        let mut line = 1;
+
+        for capture in m.captures {
+            let capture_name = capture_names[capture.index as usize];
+            let node = capture.node;
+            let text = node
+                .utf8_text(file_content.as_bytes())
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+
+            match capture_name {
+                "fn" => fn_name = text,
+                "url" => url_arg = text,
+                _ => {}
+            }
+
+            line = node.start_position().row + 1;
+        }
+
+        if fn_name == "fetch" {
+            let service_name =
+                scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
+                    .unwrap_or("")
+                    .to_string();
+
+            let evidence = format!("fetch('{}')", url_arg);
+            let truncated_evidence = if evidence.len() > 200 {
+                evidence[..200].to_string()
+            } else {
+                evidence
+            };
+
+            result.connections.push(ConnectionInfo {
+                source_service: service_name,
+                target_name: url_arg.clone(),
+                protocol: "rest".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:{}", relative_path, line),
+                confidence: Confidence::High,
+                extraction_method: "ast_fetch".to_string(),
+                evidence: Some(truncated_evidence),
+            });
+        }
+    }
+}
+
+/// Extract database connections (pg, mongoose, redis, mysql, etc.)
+fn extract_database_connections(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file_content: &str,
+    relative_path: &str,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    // Check for mongoose.connect() calls
+    if file_content.contains("mongoose") || file_content.contains("from 'mongoose'") {
+        let mut parser = Parser::new();
+        if parser.set_language(lang).is_err() {
+            return;
+        }
+
+        let tree = match parser.parse(file_content.as_bytes(), None) {
+            Some(t) => t,
+            None => return,
+        };
+
+        let mongoose_query = mongoose_connect_query(lang);
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(mongoose_query, tree.root_node(), file_content.as_bytes());
+
+        let capture_names = mongoose_query.capture_names();
+
+        while let Some(m) = matches.next() {
+            let mut obj = String::new();
+            let mut method = String::new();
+            let mut line = 1;
+
+            for capture in m.captures {
+                let capture_name = capture_names[capture.index as usize];
+                let node = capture.node;
+                let text = node
+                    .utf8_text(file_content.as_bytes())
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
+
+                match capture_name {
+                    "obj" => obj = text,
+                    "method" => method = text,
+                    _ => {}
+                }
+
+                line = node.start_position().row + 1;
+            }
+
+            if obj == "mongoose" && method == "connect" {
+                let service_name =
+                    scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
+                        .unwrap_or("")
+                        .to_string();
+
+                let evidence = "mongoose.connect()".to_string();
+
+                result.connections.push(ConnectionInfo {
+                    source_service: service_name,
+                    target_name: "mongodb".to_string(),
+                    protocol: "mongodb".to_string(),
+                    method: None,
+                    path: None,
+                    source_file: format!("{}:{}", relative_path, line),
+                    confidence: Confidence::High,
+                    extraction_method: "ast_mongoose".to_string(),
+                    evidence: Some(evidence),
+                });
+            }
+        }
+    }
+}
+
+/// Extract gRPC client instantiations
+fn extract_grpc_clients(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file_content: &str,
+    relative_path: &str,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    if !file_content.contains("_grpc") && !file_content.contains("_pb2_grpc") {
+        return;
+    }
+
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    let grpc_query = grpc_new_query(lang);
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(grpc_query, tree.root_node(), file_content.as_bytes());
+
+    let capture_names = grpc_query.capture_names();
+
+    while let Some(m) = matches.next() {
+        let mut ctor = String::new();
+        let mut line = 1;
+
+        for capture in m.captures {
+            let capture_name = capture_names[capture.index as usize];
+            let node = capture.node;
+            let text = node
+                .utf8_text(file_content.as_bytes())
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+
+            match capture_name {
+                "ctor" => ctor = text,
+                _ => {}
+            }
+
+            line = node.start_position().row + 1;
+        }
+
+        if ctor.ends_with("Client") {
+            let service_name =
+                scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
+                    .unwrap_or("")
+                    .to_string();
+
+            let target = ctor.strip_suffix("Client").unwrap_or(&ctor).to_string();
+
+            let evidence = format!("new {}(...)", ctor);
+
+            result.connections.push(ConnectionInfo {
+                source_service: service_name,
+                target_name: target,
+                protocol: "grpc".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:{}", relative_path, line),
+                confidence: Confidence::High,
+                extraction_method: "ast_grpc".to_string(),
+                evidence: Some(evidence),
+            });
+        }
+    }
+}
+
+/// Extract message queue calls (kafkajs, amqplib, mqtt.js)
+fn extract_mq_calls(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file_content: &str,
+    relative_path: &str,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    if !file_content.contains("producer.send")
+        && !file_content.contains("channel.publish")
+        && !file_content.contains("publish")
+    {
+        return;
+    }
+
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    // Try kafka send query
+    let kafka_query = kafka_send_query(lang);
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(kafka_query, tree.root_node(), file_content.as_bytes());
+
+    let capture_names = kafka_query.capture_names();
+
+    while let Some(m) = matches.next() {
+        let mut producer = String::new();
+        let mut method = String::new();
+        let mut key = String::new();
+        let mut topic = String::new();
+        let mut line = 1;
+
+        for capture in m.captures {
+            let capture_name = capture_names[capture.index as usize];
+            let node = capture.node;
+            let text = node
+                .utf8_text(file_content.as_bytes())
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+
+            match capture_name {
+                "producer" => producer = text,
+                "method" => method = text,
+                "key" => key = text,
+                "topic" => topic = text,
+                _ => {}
+            }
+
+            line = node.start_position().row + 1;
+        }
+
+        if method == "send" && key == "topic" {
+            let service_name =
+                scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
+                    .unwrap_or("")
+                    .to_string();
+
+            let evidence = format!("producer.send({{ topic: '{}' }})", topic);
+            let truncated_evidence = if evidence.len() > 200 {
+                evidence[..200].to_string()
+            } else {
+                evidence
+            };
+
+            result.connections.push(ConnectionInfo {
+                source_service: service_name,
+                target_name: producer,
+                protocol: "kafka".to_string(),
+                method: None,
+                path: Some(topic),
+                source_file: format!("{}:{}", relative_path, line),
+                confidence: Confidence::High,
+                extraction_method: "ast_kafka".to_string(),
+                evidence: Some(truncated_evidence),
+            });
+        }
+    }
+}
+
 impl LanguagePlugin for TypeScriptPlugin {
     fn name(&self) -> &str {
         "typescript"
@@ -403,6 +717,42 @@ impl LanguagePlugin for TypeScriptPlugin {
                         &ctx.service_roots,
                     );
                 }
+
+                // Extract HTTP clients (fetch, axios, got, etc.)
+                extract_http_clients(
+                    &mut result,
+                    &lang,
+                    &file.content,
+                    &file.relative_path,
+                    &ctx.service_roots,
+                );
+
+                // Extract database connections
+                extract_database_connections(
+                    &mut result,
+                    &lang,
+                    &file.content,
+                    &file.relative_path,
+                    &ctx.service_roots,
+                );
+
+                // Extract gRPC clients
+                extract_grpc_clients(
+                    &mut result,
+                    &lang,
+                    &file.content,
+                    &file.relative_path,
+                    &ctx.service_roots,
+                );
+
+                // Extract message queue calls
+                extract_mq_calls(
+                    &mut result,
+                    &lang,
+                    &file.content,
+                    &file.relative_path,
+                    &ctx.service_roots,
+                );
             }
         }
 
