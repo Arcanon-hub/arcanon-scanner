@@ -78,10 +78,10 @@
 
 ### Core Pipeline
 
-- [ ] **PIPE-01**: Merger deduplicates services by root_path proximity, merges endpoint lists, and aggregates connections from all plugins
-- [ ] **PIPE-02**: Resolver matches outbound calls to local endpoints by (method, normalized_path) within the same repo
-- [ ] **PIPE-03**: Resolver normalizes paths: `:param` and `{name}` to `{param}`, regex constraints dropped, wildcards to `{*}`
-- [ ] **PIPE-04**: Payload assembler produces valid ScanPayloadV1 JSON matching hub's expected format
+- [x] **PIPE-01**: Merger deduplicates services by root_path proximity, merges endpoint lists, and aggregates connections from all plugins
+- [x] **PIPE-02**: Resolver matches outbound calls to local endpoints by (method, normalized_path) within the same repo
+- [x] **PIPE-03**: Resolver normalizes paths: `:param` and `{name}` to `{param}`, regex constraints dropped, wildcards to `{*}`
+- [x] **PIPE-04**: Payload assembler produces valid ScanPayloadV1 JSON matching hub's expected format
 - [ ] **PIPE-05**: Plugins execute in parallel using rayon (config plugins first, then language plugins)
 
 ### Monorepo Support
@@ -89,7 +89,7 @@
 - [ ] **MONO-01**: Scanner detects monorepos from multiple Dockerfiles, compose services, package manifests, or go.mod files
 - [ ] **MONO-02**: Scanner attributes source files to services using nearest-ancestor matching against service root map
 - [ ] **MONO-03**: Unscoped files (in shared libraries without service markers) are not attributed to any service
-- [ ] **MONO-04**: Service names and scoping can be overridden via `.arcanon.toml` [services] section
+- [x] **MONO-04**: Service names and scoping can be overridden via `.arcanon.toml` [services] section
 
 ### Upload
 
@@ -197,10 +197,10 @@
 | CPLU-06 | Phase 3 | Complete |
 | CPLU-07 | Phase 3 | Complete |
 | CPLU-08 | Phase 3 | Complete |
-| PIPE-01 | Phase 3 | Pending |
-| PIPE-02 | Phase 3 | Pending |
-| PIPE-03 | Phase 3 | Pending |
-| PIPE-04 | Phase 3 | Pending |
+| PIPE-01 | Phase 3 | Complete |
+| PIPE-02 | Phase 3 | Complete |
+| PIPE-03 | Phase 3 | Complete |
+| PIPE-04 | Phase 3 | Complete |
 | PIPE-05 | Phase 3 | Pending |
 | UPLD-01 | Phase 3 | Complete |
 | UPLD-02 | Phase 3 | Complete |
@@ -214,7 +214,7 @@
 | DETQ-02 | Phase 3 | Complete |
 | DETQ-03 | Phase 3 | Complete |
 | DETQ-04 | Phase 3 | Complete |
-| MONO-04 | Phase 3 | Pending |
+| MONO-04 | Phase 3 | Complete |
 | LPLU-01 | Phase 4 | Pending |
 | LPLU-02 | Phase 4 | Pending |
 | LPLU-03 | Phase 4 | Pending |
