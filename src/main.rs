@@ -93,8 +93,17 @@ fn main() {
     let file_cfg = config::load_file_config(&cli.path);
 
     // Apply precedence: CLI flag > env var > .arcanon.toml > default
-    let _hub_url = cli.hub_url.or(file_cfg.scanner.hub_url);
-    let _project_slug = cli.project_slug.or(file_cfg.scanner.project_slug);
+    let hub_url = cli
+        .hub_url
+        .or(file_cfg.scanner.hub_url)
+        .unwrap_or_else(|| "https://hub.arcanon.dev".to_string());
+    let api_key = std::env::var("ARCANON_API_KEY")
+        .unwrap_or_else(|_| "placeholder-key".to_string());
+    let project_slug = cli
+        .project_slug
+        .or(file_cfg.scanner.project_slug)
+        .unwrap_or_else(|| "default-project".to_string());
+
     let mut exclude = cli.exclude.clone();
     exclude.extend(file_cfg.scanner.exclude.paths.unwrap_or_default());
 
@@ -106,15 +115,92 @@ fn main() {
         info!("Output will be written to: {}", p.display());
     }
 
-    // Load plugins
-    let _plugins = plugin::default_plugins();
+    // Build scanner config
+    let scanner_config = core::scanner::ScannerConfig {
+        root: cli.path.clone(),
+        dry_run: cli.dry_run,
+        output: cli.output.clone(),
+        hub_url,
+        api_key,
+        project_slug,
+        plugin_filter: cli.plugins.clone(),
+        exclude_patterns: exclude,
+        service_overrides: std::collections::HashMap::new(), // TODO: load from .arcanon.toml [services]
+        git_overrides: core::scanner::GitOverrides {
+            repo_url: cli.repo_url.clone(),
+            branch: cli.branch.clone(),
+            commit_sha: cli.commit_sha.clone(),
+        },
+    };
 
-    // Print stub summary to stdout if dry_run
-    if cli.dry_run {
-        println!("{{}}");
+    // Run the scanner
+    match core::scanner::run(&scanner_config) {
+        Ok(payload) => {
+            if scanner_config.dry_run {
+                // --dry-run: print payload to stdout and exit 0
+                match serde_json::to_string_pretty(&payload) {
+                    Ok(json) => {
+                        println!("{}", json);
+                        std::process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to serialize payload: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            if let Some(output_path) = &scanner_config.output {
+                // --output <FILE>: write to file and exit 0
+                match serde_json::to_string_pretty(&payload) {
+                    Ok(json) => match std::fs::write(output_path, json) {
+                        Ok(_) => {
+                            info!("Payload written to {}", output_path.display());
+                            std::process::exit(0);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to write output file: {}", e);
+                            std::process::exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Failed to serialize payload: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            // Default: upload to hub
+            let upload_config = upload::UploadConfig {
+                hub_url: scanner_config.hub_url.clone(),
+                api_key: scanner_config.api_key.clone(),
+            };
+
+            // Create tokio runtime for async upload
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!("Failed to create tokio runtime: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            match rt.block_on(upload::upload(&payload, &upload_config)) {
+                Ok(()) => {
+                    info!("Scan complete");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("Upload failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Scan failed: {}", e);
+            std::process::exit(1);
+        }
     }
-
-    // Exit 0 on success
 }
 
 #[cfg(test)]

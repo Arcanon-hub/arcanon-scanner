@@ -1,0 +1,22 @@
+openapi: "3.0.3"
+info:
+  title: E2E Test API
+  version: "1.0.0"
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      responses:
+        "200":
+          description: OK
+  /api/v1/items:
+    get:
+      operationId: listItems
+      responses:
+        "200":
+          description: OK
+    post:
+      operationId: createItem
+      responses:
+        "201":
+          description: Created

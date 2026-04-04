@@ -41,7 +41,10 @@ impl LanguagePlugin for OpenApiPlugin {
             {
                 // OpenAPI 3.0
                 match parse_openapi_3(&file.content, &file.relative_path) {
-                    Ok((endpoints, schemas)) => {
+                    Ok((service, endpoints, schemas)) => {
+                        if let Some(svc) = service {
+                            result.services.push(svc);
+                        }
                         result.endpoints.extend(endpoints);
                         result.schemas.extend(schemas);
                     }
@@ -54,7 +57,10 @@ impl LanguagePlugin for OpenApiPlugin {
             {
                 // Swagger 2.0
                 match parse_swagger_2(&file.content, &file.relative_path) {
-                    Ok((endpoints, schemas)) => {
+                    Ok((service, endpoints, schemas)) => {
+                        if let Some(svc) = service {
+                            result.services.push(svc);
+                        }
                         result.endpoints.extend(endpoints);
                         result.schemas.extend(schemas);
                     }
@@ -73,7 +79,14 @@ impl LanguagePlugin for OpenApiPlugin {
 fn parse_openapi_3(
     content: &str,
     relative_path: &str,
-) -> Result<(Vec<EndpointInfo>, Vec<SchemaInfo>), String> {
+) -> Result<
+    (
+        Option<crate::types::ServiceInfo>,
+        Vec<EndpointInfo>,
+        Vec<SchemaInfo>,
+    ),
+    String,
+> {
     let mut endpoints = Vec::new();
     let mut schemas = Vec::new();
 
@@ -86,6 +99,17 @@ fn parse_openapi_3(
 
     // Get service name from title (always present in OpenAPI 3.0)
     let service_name = spec.info.title.clone();
+
+    // Create a ServiceInfo for the API
+    let service = crate::types::ServiceInfo {
+        name: service_name.clone(),
+        root_path: String::new(),
+        language: String::new(),
+        service_type: "service".to_string(),
+        boundary_entry: Some(relative_path.to_string()),
+        confidence: Confidence::High,
+        extraction_method: "spec:openapi".to_string(),
+    };
 
     // Extract endpoints from paths
     let paths_map = spec.paths.paths;
@@ -137,7 +161,7 @@ fn parse_openapi_3(
         }
     }
 
-    Ok((endpoints, schemas))
+    Ok((Some(service), endpoints, schemas))
 }
 
 /// Extract fields from an OpenAPI Schema
@@ -228,7 +252,14 @@ struct SwaggerOperation {
 fn parse_swagger_2(
     content: &str,
     relative_path: &str,
-) -> Result<(Vec<EndpointInfo>, Vec<SchemaInfo>), String> {
+) -> Result<
+    (
+        Option<crate::types::ServiceInfo>,
+        Vec<EndpointInfo>,
+        Vec<SchemaInfo>,
+    ),
+    String,
+> {
     let mut endpoints = Vec::new();
 
     // Try JSON first, then YAML
@@ -247,6 +278,17 @@ fn parse_swagger_2(
             .and_then(|s| s.to_str())
             .unwrap_or("api")
             .to_string()
+    };
+
+    // Create a ServiceInfo for the API
+    let service = crate::types::ServiceInfo {
+        name: service_name.clone(),
+        root_path: String::new(),
+        language: String::new(),
+        service_type: "service".to_string(),
+        boundary_entry: Some(relative_path.to_string()),
+        confidence: Confidence::High,
+        extraction_method: "spec:openapi".to_string(),
     };
 
     // Extract endpoints from paths
@@ -278,7 +320,7 @@ fn parse_swagger_2(
     }
 
     // Swagger 2.0 schemas are in top-level definitions, not components
-    Ok((endpoints, Vec::new()))
+    Ok((Some(service), endpoints, Vec::new()))
 }
 
 #[cfg(test)]
@@ -312,7 +354,8 @@ paths:
           description: Success
 "#;
 
-        let (endpoints, _schemas) = parse_openapi_3(yaml, "test.yaml").expect("parse failed");
+        let (_service, endpoints, _schemas) =
+            parse_openapi_3(yaml, "test.yaml").expect("parse failed");
 
         assert_eq!(endpoints.len(), 3);
         assert!(endpoints
@@ -352,7 +395,8 @@ components:
           type: string
 "#;
 
-        let (_endpoints, schemas) = parse_openapi_3(yaml, "test.yaml").expect("parse failed");
+        let (_service, _endpoints, schemas) =
+            parse_openapi_3(yaml, "test.yaml").expect("parse failed");
 
         assert_eq!(schemas.len(), 1);
         let schema = &schemas[0];
@@ -388,7 +432,8 @@ paths:
       operationId: createUser
 "#;
 
-        let (endpoints, _schemas) = parse_swagger_2(yaml, "swagger.yaml").expect("parse failed");
+        let (_service, endpoints, _schemas) =
+            parse_swagger_2(yaml, "swagger.yaml").expect("parse failed");
 
         assert_eq!(endpoints.len(), 2);
         assert!(endpoints
