@@ -107,12 +107,12 @@
 
 ### Build Tooling
 
-- [ ] **BLDG-01**: Makefile includes `lint` target running clippy with deny warnings
-- [ ] **BLDG-02**: Makefile includes `fmt` target running rustfmt check
-- [ ] **BLDG-03**: Makefile includes `test` target running cargo test
-- [ ] **BLDG-04**: Makefile includes `build` target for debug and release builds
-- [ ] **BLDG-05**: GitHub Actions workflow runs lint, fmt, test on push/PR for Linux amd64
-- [ ] **BLDG-06**: GitHub Actions workflow builds release binary for x86_64-unknown-linux-musl
+- [x] **BLDG-01**: Makefile includes `lint` target running clippy with deny warnings
+- [x] **BLDG-02**: Makefile includes `fmt` target running rustfmt check
+- [x] **BLDG-03**: Makefile includes `test` target running cargo test
+- [x] **BLDG-04**: Makefile includes `build` target for debug and release builds
+- [x] **BLDG-05**: GitHub Actions workflow runs lint, fmt, test on push/PR for Linux amd64
+- [x] **BLDG-06**: GitHub Actions workflow builds release binary for x86_64-unknown-linux-musl
 - [x] **BLDG-07**: Release profile configured with LTO, single codegen unit, symbol stripping for < 15MB binary
 
 ## v2 Requirements
@@ -168,12 +168,12 @@
 | CLI-09 | Phase 1 | Complete |
 | CLI-10 | Phase 1 | Complete |
 | CLI-11 | Phase 1 | Complete |
-| BLDG-01 | Phase 1 | Pending |
-| BLDG-02 | Phase 1 | Pending |
-| BLDG-03 | Phase 1 | Pending |
-| BLDG-04 | Phase 1 | Pending |
-| BLDG-05 | Phase 1 | Pending |
-| BLDG-06 | Phase 1 | Pending |
+| BLDG-01 | Phase 1 | Complete |
+| BLDG-02 | Phase 1 | Complete |
+| BLDG-03 | Phase 1 | Complete |
+| BLDG-04 | Phase 1 | Complete |
+| BLDG-05 | Phase 1 | Complete |
+| BLDG-06 | Phase 1 | Complete |
 | BLDG-07 | Phase 1 | Complete |
 | DISC-01 | Phase 2 | Pending |
 | DISC-02 | Phase 2 | Pending |

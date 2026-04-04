@@ -35,7 +35,7 @@ Plans:
 - [x] 01-01-PLAN.md — Cargo.toml with pinned dependencies and all source module stubs
 - [x] 01-02-PLAN.md — All shared types, LanguagePlugin trait, AstParser wrapper, VariableStore stub
 - [x] 01-03-PLAN.md — Full CLI entry point (clap Cli struct, tracing init, argument parsing tests)
-- [ ] 01-04-PLAN.md — Makefile targets and GitHub Actions CI workflow
+- [x] 01-04-PLAN.md — Makefile targets and GitHub Actions CI workflow
 
 ### Phase 2: Infrastructure
 **Goal**: The scanner can discover all eligible files in a repo, attach verified git context, and build a populated VariableStore before any plugin runs
