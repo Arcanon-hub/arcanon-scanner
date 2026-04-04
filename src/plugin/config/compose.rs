@@ -84,7 +84,7 @@ impl LanguagePlugin for ComposePlugin {
             };
 
             // Build ServiceInfo for each service
-            for (service_name, _service) in &compose.services {
+            for service_name in compose.services.keys() {
                 result.services.push(ServiceInfo {
                     name: service_name.clone(),
                     root_path: root_path.clone(),

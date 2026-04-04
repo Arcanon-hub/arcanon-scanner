@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tree_sitter::Parser;
 
 use crate::plugin::{scope_to_service, ExtractionContext, LanguagePlugin};
-use crate::types::{Confidence, ConnectionInfo, EndpointInfo, ExtractionResult};
+use crate::types::{Confidence, EndpointInfo, ExtractionResult};
 
 /// Java language plugin.
 /// Covers .java, pom.xml, and build.gradle.
@@ -46,11 +46,10 @@ fn detect_spring_framework(ctx: &ExtractionContext) -> bool {
             {
                 return true;
             }
-        } else if file.relative_path.ends_with("build.gradle") {
-            if file.content.contains("spring-boot-starter-web") {
+        } else if file.relative_path.ends_with("build.gradle")
+            && file.content.contains("spring-boot-starter-web") {
                 return true;
             }
-        }
     }
     false
 }
@@ -122,11 +121,10 @@ fn extract_class_prefixes(
 fn extract_prefix_from_modifiers(node: tree_sitter::Node, source: &str, prefix: &mut String) {
     let mut cursor = node.walk();
     for annotation in node.children(&mut cursor) {
-        if annotation.kind() == "annotation" {
-            if is_route_annotation(annotation, source) {
+        if annotation.kind() == "annotation"
+            && is_route_annotation(annotation, source) {
                 extract_path_from_annotation(annotation, source, prefix);
             }
-        }
     }
 }
 
@@ -168,13 +166,12 @@ fn extract_path_from_arg_list(node: tree_sitter::Node, source: &str, path: &mut 
                         if let Ok(k) = pair_child.utf8_text(source.as_bytes()) {
                             key = k.to_string();
                         }
-                    } else if pair_child.kind() == "string_literal" {
-                        if matches!(key.as_str(), "value" | "path") {
+                    } else if pair_child.kind() == "string_literal"
+                        && matches!(key.as_str(), "value" | "path") {
                             if let Ok(v) = pair_child.utf8_text(source.as_bytes()) {
                                 *path = v.trim_matches('"').to_string();
                             }
                         }
-                    }
                 }
             }
             _ => {}

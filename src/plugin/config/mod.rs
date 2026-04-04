@@ -25,5 +25,3 @@ pub use asyncapi::AsyncApiPlugin;
 pub mod kubernetes;
 pub use kubernetes::KubernetesPlugin;
 
-use crate::plugin::{ExtractionContext, LanguagePlugin};
-use crate::types::ExtractionResult;

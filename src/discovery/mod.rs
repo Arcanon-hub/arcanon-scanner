@@ -70,7 +70,7 @@ pub fn walk_repo(root: &Path, excludes: &[String]) -> Result<Vec<PathBuf>> {
         let entry = result?;
 
         // Only process files (not directories)
-        if entry.file_type().map_or(false, |ft| ft.is_file()) {
+        if entry.file_type().is_some_and(|ft| ft.is_file()) {
             // Apply content guards (binary, line-length checks)
             if let Some(path) = passes_content_guards(entry.path()) {
                 files.push(path.to_owned());

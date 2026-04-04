@@ -1,5 +1,5 @@
 use crate::plugin::{ExtractionContext, LanguagePlugin};
-use crate::types::{Confidence, EndpointInfo, ExtractionResult, SchemaInfo};
+use crate::types::{Confidence, EndpointInfo, ExtractionResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::warn;

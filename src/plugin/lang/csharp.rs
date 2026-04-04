@@ -2,7 +2,6 @@
 // Plugins are synchronous (rayon). Upload is async (tokio). See PITFALLS.md Pitfall 4.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use tree_sitter::Language;
 
@@ -142,7 +141,7 @@ fn extract_method_routes(
     result: &mut ExtractionResult,
 ) {
     let ast = AstHelper::new(csharp_language());
-    let http_methods = vec!["HttpGet", "HttpPost", "HttpPut", "HttpDelete", "HttpPatch"];
+    let http_methods = ["HttpGet", "HttpPost", "HttpPut", "HttpDelete", "HttpPatch"];
 
     for file in files {
         let matches = ast.query_matches(
@@ -221,7 +220,7 @@ fn extract_httpclient_calls(
     result: &mut ExtractionResult,
 ) {
     let ast = AstHelper::new(csharp_language());
-    let httpclient_methods = vec![
+    let httpclient_methods = [
         "GetAsync",
         "PostAsync",
         "PutAsync",
@@ -359,6 +358,8 @@ fn extract_grpc_clients(
 mod tests {
     use super::*;
     use crate::plugin::FileContext;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     fn make_ctx(files: Vec<(&str, &str)>) -> ExtractionContext {

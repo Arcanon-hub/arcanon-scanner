@@ -1,7 +1,6 @@
 // HARD BOUNDARY: No tokio imports allowed in language plugin code.
 // Plugins are synchronous (rayon). Upload is async (tokio). See PITFALLS.md Pitfall 4.
 
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
@@ -74,11 +73,13 @@ fn resources_query(lang: &Language) -> &'static Query {
 }
 
 fn faraday_query(lang: &Language) -> &'static Query {
-    FARADAY_QUERY_CACHE.get_or_init(|| Query::new(lang, FARADAY_QUERY).expect("valid faraday query"))
+    FARADAY_QUERY_CACHE
+        .get_or_init(|| Query::new(lang, FARADAY_QUERY).expect("valid faraday query"))
 }
 
 fn net_http_query(lang: &Language) -> &'static Query {
-    NET_HTTP_QUERY_CACHE.get_or_init(|| Query::new(lang, NET_HTTP_QUERY).expect("valid net_http query"))
+    NET_HTTP_QUERY_CACHE
+        .get_or_init(|| Query::new(lang, NET_HTTP_QUERY).expect("valid net_http query"))
 }
 
 /// Detect Ruby frameworks from Gemfile in the file list
@@ -423,6 +424,7 @@ impl LanguagePlugin for RubyPlugin {
 mod tests {
     use super::*;
     use crate::plugin::FileContext;
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -466,11 +468,7 @@ mod tests {
         let plugin = RubyPlugin;
 
         let files = vec![
-            (
-                "/repo/Gemfile",
-                "Gemfile",
-                r#"gem "rails", "~> 7.0""#,
-            ),
+            ("/repo/Gemfile", "Gemfile", r#"gem "rails", "~> 7.0""#),
             (
                 "/repo/config/routes.rb",
                 "config/routes.rb",
@@ -494,11 +492,7 @@ mod tests {
         let plugin = RubyPlugin;
 
         let files = vec![
-            (
-                "/repo/Gemfile",
-                "Gemfile",
-                r#"gem "rails", "~> 7.0""#,
-            ),
+            ("/repo/Gemfile", "Gemfile", r#"gem "rails", "~> 7.0""#),
             (
                 "/repo/config/routes.rb",
                 "config/routes.rb",
@@ -532,11 +526,7 @@ mod tests {
         let plugin = RubyPlugin;
 
         let files = vec![
-            (
-                "/repo/Gemfile",
-                "Gemfile",
-                r#"gem "faraday""#,
-            ),
+            ("/repo/Gemfile", "Gemfile", r#"gem "faraday""#),
             (
                 "/repo/lib/client.rb",
                 "lib/client.rb",
@@ -555,7 +545,10 @@ mod tests {
 
     #[test]
     fn test_source_file_format() {
-        assert_eq!(format_source_file("config/routes.rb", 15), "config/routes.rb:15");
+        assert_eq!(
+            format_source_file("config/routes.rb", 15),
+            "config/routes.rb:15"
+        );
     }
 
     #[test]

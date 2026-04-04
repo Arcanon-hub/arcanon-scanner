@@ -1,7 +1,6 @@
 // HARD BOUNDARY: No tokio imports allowed in language plugin code.
 // Plugins are synchronous (rayon). Upload is async (tokio). See PITFALLS.md Pitfall 4.
 
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
@@ -476,6 +475,7 @@ impl LanguagePlugin for RustLangPlugin {
 mod tests {
     use super::*;
     use crate::plugin::FileContext;
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
 
