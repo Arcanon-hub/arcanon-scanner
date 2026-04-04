@@ -38,10 +38,10 @@ toml = "1.1.2"
 serde_yaml_bw = "2.5.4"  # replaces deprecated serde_yaml (PITFALLS.md Pitfall 2)
 
 # HTTP upload (rustls only — no OpenSSL, musl-safe)
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 
 # Async runtime (reqwest only — NOT for plugins; plugins use rayon)
-tokio = { version = "1.51", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.51", features = ["rt-multi-thread", "macros", "time"] }
 
 # CPU-bound parallelism for plugin execution
 rayon = "1.11.0"

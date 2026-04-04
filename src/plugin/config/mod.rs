@@ -1,3 +1,6 @@
+// HARD BOUNDARY: No tokio imports allowed in plugin code.
+// Plugins are synchronous (rayon). Upload is async (tokio). See PITFALLS.md Pitfall 4.
+
 pub mod openapi;
 pub use openapi::OpenApiPlugin;
 

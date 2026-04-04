@@ -1,3 +1,6 @@
+// HARD BOUNDARY: No tokio imports allowed in language plugin code.
+// Plugins are synchronous (rayon). Upload is async (tokio). See PITFALLS.md Pitfall 4.
+
 use crate::plugin::{ExtractionContext, LanguagePlugin};
 use crate::types::ExtractionResult;
 

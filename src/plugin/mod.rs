@@ -1,3 +1,15 @@
+//! Plugin host: LanguagePlugin trait and compiled-in registry.
+//!
+//! # Panic Safety (FTOL-02)
+//! The scanner calls `plugin.extract()` via `std::panic::catch_unwind(AssertUnwindSafe(...))`.
+//! If a plugin panics, the panic is caught and logged; other plugins continue normally.
+//! Plugin authors: do not rely on panics for control flow.
+//!
+//! # Sync Boundary (PITFALLS.md Pitfall 4)
+//! All plugins are SYNCHRONOUS. The `extract()` method MUST NOT use async/await or import tokio.
+//! Plugins run on rayon's thread pool. Async work (upload) runs separately on tokio.
+//! Calling tokio from a rayon thread causes deadlocks.
+
 // HARD BOUNDARY: NO TOKIO IMPORTS IN THIS DIRECTORY OR ANY SUBDIRECTORY.
 // All plugin code runs on rayon threads (CPU-bound). Calling .await or
 // tokio::block_on() from a rayon thread causes deadlocks (PITFALLS.md Pitfall 4).
