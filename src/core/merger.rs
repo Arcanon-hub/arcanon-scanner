@@ -149,7 +149,12 @@ pub fn merge(results: Vec<ExtractionResult>) -> MergedResult {
 /// Called before upload to notify the operator of potentially unexpected scan results.
 pub fn check_empty_findings(merged: &MergedResult) {
     if merged.services.is_empty() {
-        tracing::warn!("No services found — scan will upload empty findings (valid)");
+        tracing::warn!(
+            "No services detected. Add a Dockerfile, docker-compose.yml, or configure [services] in .arcanon.toml. \
+             Connections ({}) and schemas ({}) will still be uploaded.",
+            merged.connections.len(),
+            merged.schemas.len()
+        );
     }
 }
 
