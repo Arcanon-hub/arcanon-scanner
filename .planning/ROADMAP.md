@@ -74,8 +74,17 @@ Plans:
   2. All 7 language plugins detect their respective HTTP client calls (fetch, httpx, http.Get, RestTemplate, HttpClient, reqwest, Faraday) and produce connection findings with evidence snippets and file:line attribution
   3. A monorepo with two Dockerfiles scopes TypeScript files under service-a/ to service-a and Python files under service-b/ to service-b; shared library files under lib/ are unscoped
   4. Framework marker checks prevent full AST parsing on repos that don't contain the relevant framework (no Go plugin AST work runs on a Python-only repo)
-**Plans**: TBD
-**UI hint**: no
+**Plans**: 8 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — AstHelper wrapper, ExtractionContext.service_roots, scope_to_service, all 7 plugin stubs
+- [ ] 04-02-PLAN.md — TypeScript plugin: Express/NestJS routes (two-phase), fetch/axios clients, MQ/DB/gRPC
+- [ ] 04-03-PLAN.md — Python plugin: FastAPI/Django/Flask routes, HTTP/MQ/DB/industrial/gRPC clients
+- [ ] 04-04-PLAN.md — Go plugin: net/http/Gin/Echo routes, http.Get/grpc.Dial clients
+- [ ] 04-05-PLAN.md — Java plugin: Spring Boot routes (two-phase), RestTemplate/WebClient/gRPC clients
+- [ ] 04-06-PLAN.md — C# plugin: ASP.NET Core routes (two-phase + [controller] expansion), HttpClient/gRPC clients
+- [ ] 04-07-PLAN.md — Rust plugin (Actix/Axum/reqwest/tokio-modbus) + Ruby plugin (Rails resources expansion/Faraday)
+- [ ] 04-08-PLAN.md — Polyglot fixture + end-to-end integration test (MONO-01/02/03 + DETQ-05 verification)
 
 ## Progress
 
@@ -87,4 +96,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 0/4 | In progress | - |
 | 2. Infrastructure | 0/3 | Not started | - |
 | 3. Pipeline and Config Plugins | 0/TBD | Not started | - |
-| 4. Language Plugins and Hardening | 0/TBD | Not started | - |
+| 4. Language Plugins and Hardening | 0/8 | Not started | - |
