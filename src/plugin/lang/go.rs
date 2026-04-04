@@ -494,6 +494,31 @@ func main() {
     }
 
     #[test]
+    fn test_kafka_producer_detection() {
+        let helper = build_go_helper();
+        let source = r#"
+import "github.com/segmentio/kafka-go"
+
+func main() {
+    w := kafka.NewWriter(kafka.WriterConfig{})
+    w.WriteMessages(ctx, message1, message2)
+    producer.Produce(msg)
+}
+"#;
+        let matches = helper.query_matches(source, QUERY_KAFKA_PRODUCER);
+
+        let method_matches: Vec<_> = matches
+            .iter()
+            .filter(|m| m.capture_name == "method")
+            .collect();
+
+        assert!(
+            !method_matches.is_empty(),
+            "Should detect kafka producer calls"
+        );
+    }
+
+    #[test]
     fn test_sql_open_detection() {
         let helper = build_go_helper();
         let source = r#"
