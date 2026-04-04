@@ -57,16 +57,16 @@
 
 - [ ] **LPLU-01**: TypeScript plugin detects Express, NestJS, Next.js, Fastify routes and fetch/axios/got client calls via tree-sitter AST
 - [ ] **LPLU-02**: Python plugin detects FastAPI, Django, Flask routes and httpx/requests/aiohttp client calls via tree-sitter AST
-- [ ] **LPLU-03**: Go plugin detects net/http, Gin, Echo, Fiber routes and http.Get/grpc.Dial client calls via tree-sitter AST
+- [x] **LPLU-03**: Go plugin detects net/http, Gin, Echo, Fiber routes and http.Get/grpc.Dial client calls via tree-sitter AST
 - [ ] **LPLU-04**: Java plugin detects Spring Boot annotations (@RestController, @RequestMapping) and RestTemplate/WebClient calls via tree-sitter AST
 - [ ] **LPLU-05**: C# plugin detects ASP.NET Core attributes ([ApiController], [HttpGet]) and HttpClient calls via tree-sitter AST
 - [ ] **LPLU-06**: Rust plugin detects Actix-web, Axum, Rocket routes and reqwest/tonic client calls via tree-sitter AST
 - [ ] **LPLU-07**: Ruby plugin detects Rails routes.rb, Sinatra routes, and Faraday/Net::HTTP client calls via tree-sitter AST
-- [ ] **LPLU-08**: Each language plugin checks framework markers (package.json, go.mod, Gemfile, etc.) before committing to full AST parsing
-- [ ] **LPLU-09**: Language plugins detect message queue calls (amqplib, kafkajs, mqtt.js, pika, rdkafka, rumqttc, etc.)
-- [ ] **LPLU-10**: Language plugins detect database client calls (pg, mongoose, redis, mysql2, sqlx, etc.) with protocol identification
+- [x] **LPLU-08**: Each language plugin checks framework markers (package.json, go.mod, Gemfile, etc.) before committing to full AST parsing
+- [x] **LPLU-09**: Language plugins detect message queue calls (amqplib, kafkajs, mqtt.js, pika, rdkafka, rumqttc, etc.)
+- [x] **LPLU-10**: Language plugins detect database client calls (pg, mongoose, redis, mysql2, sqlx, etc.) with protocol identification
 - [ ] **LPLU-11**: Language plugins detect industrial protocol calls (Modbus, OPC UA, BACnet, CAN bus, HL7/FHIR) from known library patterns
-- [ ] **LPLU-12**: Language plugins detect gRPC client calls (grpc.Dial, ServiceStub, newBlockingStub, etc.)
+- [x] **LPLU-12**: Language plugins detect gRPC client calls (grpc.Dial, ServiceStub, newBlockingStub, etc.)
 
 ### Detection Quality
 
@@ -217,16 +217,16 @@
 | MONO-04 | Phase 3 | Complete |
 | LPLU-01 | Phase 4 | Pending |
 | LPLU-02 | Phase 4 | Pending |
-| LPLU-03 | Phase 4 | Pending |
+| LPLU-03 | Phase 4 | Complete |
 | LPLU-04 | Phase 4 | Pending |
 | LPLU-05 | Phase 4 | Pending |
 | LPLU-06 | Phase 4 | Pending |
 | LPLU-07 | Phase 4 | Pending |
-| LPLU-08 | Phase 4 | Pending |
-| LPLU-09 | Phase 4 | Pending |
-| LPLU-10 | Phase 4 | Pending |
+| LPLU-08 | Phase 4 | Complete |
+| LPLU-09 | Phase 4 | Complete |
+| LPLU-10 | Phase 4 | Complete |
 | LPLU-11 | Phase 4 | Pending |
-| LPLU-12 | Phase 4 | Pending |
+| LPLU-12 | Phase 4 | Complete |
 | DETQ-05 | Phase 4 | Pending |
 | MONO-01 | Phase 4 | Complete |
 | MONO-02 | Phase 4 | Complete |
