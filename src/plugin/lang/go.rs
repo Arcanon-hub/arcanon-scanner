@@ -197,8 +197,8 @@ fn detect_routes(
     let http_matches = helper.query_matches(source, QUERY_HTTP_HANDLEFUNC);
     for m in group_matches_by_query(&http_matches) {
         if let (Some(pkg), Some(fn_name), Some(path)) = (m.get("pkg"), m.get("fn"), m.get("path")) {
-            let valid_pkg = ["http", "mux", "r", "router"].contains(&pkg);
-            let valid_fn = ["HandleFunc", "Handle"].contains(&fn_name);
+            let valid_pkg = ["http", "mux", "r", "router"].contains(&pkg.as_str());
+            let valid_fn = ["HandleFunc", "Handle"].contains(&fn_name.as_str());
 
             if valid_pkg && valid_fn {
                 let path_str = extract_string_literal(path);
@@ -230,9 +230,9 @@ fn detect_http_clients(
 
     for m in group_matches_by_query(&matches) {
         if let (Some(obj), Some(method)) = (m.get("obj"), m.get("method")) {
-            let valid_obj = ["http", "client", "c", "httpClient"].contains(&obj);
-            let valid_method =
-                ["Get", "Post", "Do", "NewRequest", "Head", "Put", "Delete"].contains(&method);
+            let valid_obj = ["http", "client", "c", "httpClient"].contains(&obj.as_str());
+            let valid_method = ["Get", "Post", "Do", "NewRequest", "Head", "Put", "Delete"]
+                .contains(&method.as_str());
 
             if valid_obj && valid_method {
                 if let Some(service_name) = scope_to_service(&file.path, &ctx.service_roots) {

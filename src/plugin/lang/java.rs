@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tree_sitter::Parser;
 
 use crate::plugin::{scope_to_service, ExtractionContext, LanguagePlugin};
-use crate::types::{Confidence, EndpointInfo, ExtractionResult};
+use crate::types::{Confidence, ConnectionInfo, EndpointInfo, ExtractionResult};
 
 /// Java language plugin.
 /// Covers .java, pom.xml, and build.gradle.
@@ -23,13 +23,14 @@ impl LanguagePlugin for JavaPlugin {
     fn extract(&self, ctx: &ExtractionContext) -> ExtractionResult {
         let mut result = ExtractionResult::default();
 
-        if !detect_spring_framework(ctx) {
-            return result;
-        }
+        let has_spring = detect_spring_framework(ctx);
 
         for file in ctx.files.iter() {
             if file.relative_path.ends_with(".java") {
-                extract_routes_from_file(&file.content, &file.relative_path, ctx, &mut result);
+                if has_spring {
+                    extract_routes_from_file(&file.content, &file.relative_path, ctx, &mut result);
+                }
+                extract_connections_from_file(&file.content, &file.relative_path, ctx, &mut result);
             }
         }
 
@@ -305,6 +306,177 @@ fn find_enclosing_class_name(method_node: tree_sitter::Node, source: &str) -> St
     String::new()
 }
 
+
+fn extract_connections_from_file(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    // RestTemplate detection
+    if content.contains("RestTemplate") || content.contains("restTemplate") {
+        detect_rest_template(content, relative_path, ctx, result);
+    }
+
+    // gRPC detection
+    if content.contains("Grpc.") {
+        detect_grpc(content, relative_path, ctx, result);
+    }
+
+    // RabbitMQ detection
+    if content.contains("RabbitTemplate") || content.contains("AmqpTemplate") {
+        detect_rabbit_mq(content, relative_path, ctx, result);
+    }
+
+    // Kafka detection
+    if content.contains("KafkaTemplate") {
+        detect_kafka(content, relative_path, ctx, result);
+    }
+
+    // JDBC detection
+    if content.contains("JdbcTemplate") {
+        detect_jdbc(content, relative_path, ctx, result);
+    }
+}
+
+fn detect_rest_template(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    // Simple pattern matching for RestTemplate method calls
+    let methods = ["getForObject", "postForObject", "exchange", "getForEntity"];
+    for method in &methods {
+        if content.contains(method) {
+            let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+                .unwrap_or("unknown")
+                .to_string();
+
+            result.connections.push(crate::types::ConnectionInfo {
+                source_service: service_name,
+                target_name: "unknown".to_string(),
+                protocol: "rest".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:1", relative_path),
+                confidence: Confidence::Medium,
+                extraction_method: "java_rest_template".to_string(),
+                evidence: Some(format!("RestTemplate.{} call detected", method)),
+            });
+            break;
+        }
+    }
+}
+
+fn detect_grpc(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    // Look for ServiceGrpc.newBlockingStub pattern
+    if let Some(start) = content.find("Grpc.new") {
+        if let Some(class_end) = content[..start].rfind(' ') {
+            let class_part = &content[class_end + 1..start];
+            if class_part.contains("Service") {
+                let target_name = class_part.replace("Service", "");
+                let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                result.connections.push(crate::types::ConnectionInfo {
+                    source_service: service_name,
+                    target_name,
+                    protocol: "grpc".to_string(),
+                    method: None,
+                    path: None,
+                    source_file: format!("{}:1", relative_path),
+                    confidence: Confidence::High,
+                    extraction_method: "java_grpc".to_string(),
+                    evidence: Some(format!("{}Grpc.newBlockingStub() call", class_part)),
+                });
+            }
+        }
+    }
+}
+
+fn detect_rabbit_mq(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    if content.contains("convertAndSend") || content.contains("basicPublish") {
+        let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+            .unwrap_or("unknown")
+            .to_string();
+
+        result.connections.push(crate::types::ConnectionInfo {
+            source_service: service_name,
+            target_name: "rabbitmq".to_string(),
+            protocol: "amqp".to_string(),
+            method: None,
+            path: None,
+            source_file: format!("{}:1", relative_path),
+            confidence: Confidence::High,
+            extraction_method: "java_rabbit_mq".to_string(),
+            evidence: Some("RabbitTemplate message publish detected".to_string()),
+        });
+    }
+}
+
+fn detect_kafka(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    if content.contains("kafkaTemplate.send") {
+        let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+            .unwrap_or("unknown")
+            .to_string();
+
+        result.connections.push(crate::types::ConnectionInfo {
+            source_service: service_name,
+            target_name: "kafka".to_string(),
+            protocol: "kafka".to_string(),
+            method: None,
+            path: None,
+            source_file: format!("{}:1", relative_path),
+            confidence: Confidence::High,
+            extraction_method: "java_kafka".to_string(),
+            evidence: Some("KafkaTemplate.send() call detected".to_string()),
+        });
+    }
+}
+
+fn detect_jdbc(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    if content.contains("JdbcTemplate") {
+        let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+            .unwrap_or("unknown")
+            .to_string();
+
+        result.connections.push(crate::types::ConnectionInfo {
+            source_service: service_name,
+            target_name: "database".to_string(),
+            protocol: "postgresql".to_string(),
+            method: None,
+            path: None,
+            source_file: format!("{}:1", relative_path),
+            confidence: Confidence::Medium,
+            extraction_method: "java_jdbc".to_string(),
+            evidence: Some("JdbcTemplate usage detected".to_string()),
+        });
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,5 +574,119 @@ public class UserController {
         let result = plugin.extract(&ctx);
 
         assert!(result.endpoints.is_empty());
+    }
+
+    #[test]
+    fn test_rest_template_detection() {
+        let java_code = r#"
+public class OrderService {
+    @Autowired
+    private RestTemplate restTemplate;
+
+    public void fetchOrder(String id) {
+        Order order = restTemplate.getForObject("/api/orders/" + id, Order.class);
+    }
+}
+"#;
+        let ctx = create_test_context(vec![("src/OrderService.java".to_string(), java_code.to_string())]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.extraction_method, "java_rest_template");
+    }
+
+    #[test]
+    fn test_grpc_stub_detection() {
+        let java_code = r#"
+public class OrderClient {
+    private OrderServiceGrpc.OrderServiceBlockingStub stub;
+
+    public Order getOrder(String id) {
+        this.stub = OrderServiceGrpc.newBlockingStub(channel);
+        return stub.getOrder(GetOrderRequest.newBuilder().setId(id).build());
+    }
+}
+"#;
+        let ctx = create_test_context(vec![("src/OrderClient.java".to_string(), java_code.to_string())]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "grpc");
+        assert_eq!(conn.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn test_rabbit_mq_detection() {
+        let java_code = r#"
+public class OrderPublisher {
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    public void publishOrder(Order order) {
+        rabbitTemplate.convertAndSend("orders", order);
+    }
+}
+"#;
+        let ctx = create_test_context(vec![("src/OrderPublisher.java".to_string(), java_code.to_string())]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "amqp");
+        assert_eq!(conn.target_name, "rabbitmq");
+    }
+
+    #[test]
+    fn test_kafka_detection() {
+        let java_code = r#"
+public class EventPublisher {
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    public void publish(String topic, String message) {
+        kafkaTemplate.send(topic, message);
+    }
+}
+"#;
+        let ctx = create_test_context(vec![("src/EventPublisher.java".to_string(), java_code.to_string())]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "kafka");
+    }
+
+    #[test]
+    fn test_jdbc_detection() {
+        let java_code = r#"
+public class OrderRepository {
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    public Order findById(String id) {
+        return jdbcTemplate.queryForObject("SELECT * FROM orders WHERE id = ?", Order.class, id);
+    }
+}
+"#;
+        let ctx = create_test_context(vec![("src/OrderRepository.java".to_string(), java_code.to_string())]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "postgresql");
+        assert_eq!(conn.extraction_method, "java_jdbc");
     }
 }
