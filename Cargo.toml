@@ -59,6 +59,11 @@ sha2 = "0.10"
 # URL parsing (variable resolution)
 url = "2"
 
+# Spec parsing (Phase 3 config plugins)
+openapiv3 = "2.2"
+apollo-parser = "0.8"
+protobuf-parse = { version = "3.7", default-features = false }
+
 [dev-dependencies]
 tempfile = "3"
 serial_test = "2"

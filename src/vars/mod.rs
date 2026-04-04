@@ -20,6 +20,15 @@ pub struct VariableStore {
 }
 
 impl VariableStore {
+    /// Create a new empty VariableStore (for testing)
+    pub fn new() -> Self {
+        VariableStore {
+            env_files: HashMap::new(),
+            compose_env: HashMap::new(),
+            k8s_env: HashMap::new(),
+        }
+    }
+
     /// Resolve a variable name to its value, checking layers in priority order
     pub fn resolve(&self, key: &str) -> Option<&str> {
         self.env_files

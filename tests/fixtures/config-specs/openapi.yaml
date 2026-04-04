@@ -1,0 +1,45 @@
+openapi: "3.0.3"
+info:
+  title: User Service
+  version: "1.0.0"
+paths:
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      summary: List all users
+      responses:
+        "200":
+          description: Success
+    post:
+      operationId: createUser
+      summary: Create user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        "201":
+          description: Created
+  /api/v1/users/{id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+components:
+  schemas:
+    CreateUserRequest:
+      type: object
+      required: [email, name]
+      properties:
+        email:
+          type: string
+        name:
+          type: string
