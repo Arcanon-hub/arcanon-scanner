@@ -6,8 +6,8 @@ A Rust CLI that statically analyzes codebases to extract service boundaries, end
 
 ```bash
 # From source (requires Rust 1.85+)
-git clone https://github.com/arcanon-dev/arcanon-scanner.git
-cd arcanon-scanner
+git clone https://github.com/arcanon-dev/arcanon.git
+cd arcanon
 make install
 
 # Or directly via cargo
@@ -23,31 +23,31 @@ make uninstall
 ## Usage
 
 ```
-arcanon-scanner [OPTIONS] [PATH]
+arcanon [OPTIONS] [PATH]
 ```
 
 Scan the current directory and upload to hub:
 
 ```bash
-arcanon-scanner --hub-url https://hub.arcanon.dev --api-key $ARCANON_API_KEY
+arcanon --hub-url https://hub.arcanon.dev --api-key $ARCANON_API_KEY
 ```
 
 Preview output without uploading:
 
 ```bash
-arcanon-scanner --dry-run
+arcanon --dry-run
 ```
 
 Save payload to a file:
 
 ```bash
-arcanon-scanner --output scan-result.json
+arcanon --output scan-result.json
 ```
 
 Scan a specific directory:
 
 ```bash
-arcanon-scanner /path/to/repo --dry-run
+arcanon /path/to/repo --dry-run
 ```
 
 ## CLI Options
@@ -158,7 +158,7 @@ Files are also skipped if they exceed 500KB, contain null bytes (binary), or hav
 # GitHub Actions
 - name: Scan with Arcanon
   run: |
-    arcanon-scanner \
+    arcanon \
       --hub-url ${{ secrets.ARCANON_HUB_URL }} \
       --api-key ${{ secrets.ARCANON_API_KEY }} \
       --project-slug my-project
@@ -172,7 +172,7 @@ make fmt       # cargo fmt --check
 make test      # cargo test
 make build     # cargo build + cargo build --release
 make install   # cargo install --path .
-make uninstall # cargo uninstall arcanon-scanner
+make uninstall # cargo uninstall arcanon
 ```
 
 ## Exit Codes

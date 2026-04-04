@@ -7,7 +7,7 @@ description = "Static service topology scanner"
 license = "MIT"
 
 [[bin]]
-name = "arcanon-scanner"
+name = "arcanon"
 path = "src/main.rs"
 
 [dependencies]

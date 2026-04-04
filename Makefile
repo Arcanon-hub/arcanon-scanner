@@ -23,4 +23,4 @@ install:
 
 ## Uninstall from ~/.cargo/bin
 uninstall:
-	cargo uninstall arcanon-scanner
+	cargo uninstall arcanon

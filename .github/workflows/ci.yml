@@ -60,7 +60,7 @@ jobs:
 
       - name: Assert binary size under 15MB
         run: |
-          BINARY="target/x86_64-unknown-linux-musl/release/arcanon-scanner"
+          BINARY="target/x86_64-unknown-linux-musl/release/arcanon"
           SIZE=$(wc -c < "$BINARY")
           LIMIT=15728640
           echo "Binary size: $SIZE bytes (limit: $LIMIT bytes)"

@@ -15,7 +15,7 @@ mod vars;
 /// Static service topology scanner for Arcanon Hub
 #[derive(Parser, Debug)]
 #[command(
-    name = "arcanon-scanner",
+    name = "arcanon",
     version,
     about = "Static service topology scanner"
 )]
@@ -108,7 +108,7 @@ fn main() {
     exclude.extend(file_cfg.scanner.exclude.paths.unwrap_or_default());
 
     // Log startup
-    info!("arcanon-scanner starting, scanning: {}", cli.path.display());
+    info!("arcanon starting, scanning: {}", cli.path.display());
 
     // Log output destination if specified
     if let Some(ref p) = cli.output {
@@ -209,46 +209,46 @@ mod tests {
 
     #[test]
     fn test_default_path() {
-        let cli = Cli::try_parse_from(["arcanon-scanner"]).unwrap();
+        let cli = Cli::try_parse_from(["arcanon"]).unwrap();
         assert_eq!(cli.path.to_str().unwrap(), ".");
     }
 
     #[test]
     fn test_hub_url_flag() {
-        let cli = Cli::try_parse_from(["arcanon-scanner", "--hub-url", "https://hub.arcanon.dev"])
+        let cli = Cli::try_parse_from(["arcanon", "--hub-url", "https://hub.arcanon.dev"])
             .unwrap();
         assert_eq!(cli.hub_url.as_deref(), Some("https://hub.arcanon.dev"));
     }
 
     #[test]
     fn test_output_flag() {
-        let cli = Cli::try_parse_from(["arcanon-scanner", "--output", "result.json"]).unwrap();
+        let cli = Cli::try_parse_from(["arcanon", "--output", "result.json"]).unwrap();
         assert!(cli.output.is_some());
     }
 
     #[test]
     fn test_dry_run_flag() {
-        let cli = Cli::try_parse_from(["arcanon-scanner", "--dry-run"]).unwrap();
+        let cli = Cli::try_parse_from(["arcanon", "--dry-run"]).unwrap();
         assert!(cli.dry_run);
     }
 
     #[test]
     fn test_verbosity_count() {
-        let cli = Cli::try_parse_from(["arcanon-scanner", "-vvv"]).unwrap();
+        let cli = Cli::try_parse_from(["arcanon", "-vvv"]).unwrap();
         assert_eq!(cli.verbose, 3);
     }
 
     #[test]
     fn test_plugins_flag() {
         let cli =
-            Cli::try_parse_from(["arcanon-scanner", "--plugins", "openapi,typescript"]).unwrap();
+            Cli::try_parse_from(["arcanon", "--plugins", "openapi,typescript"]).unwrap();
         assert_eq!(cli.plugins.as_deref(), Some("openapi,typescript"));
     }
 
     #[test]
     fn test_exclude_repeatable() {
         let cli = Cli::try_parse_from([
-            "arcanon-scanner",
+            "arcanon",
             "--exclude",
             "*.log",
             "--exclude",
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn test_git_overrides() {
         let cli = Cli::try_parse_from([
-            "arcanon-scanner",
+            "arcanon",
             "--repo-url",
             "https://github.com/example/repo",
             "--branch",
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_invalid_flag_returns_err() {
-        let result = Cli::try_parse_from(["arcanon-scanner", "--nonexistent-flag"]);
+        let result = Cli::try_parse_from(["arcanon", "--nonexistent-flag"]);
         assert!(result.is_err());
     }
 }
