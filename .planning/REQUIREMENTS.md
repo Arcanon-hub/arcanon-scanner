@@ -7,32 +7,32 @@
 
 ### CLI & Configuration
 
-- [ ] **CLI-01**: User can run `arcanon-scanner [PATH]` with sensible defaults and no config file required
-- [ ] **CLI-02**: User can configure scanner via `.arcanon.toml` with precedence: CLI flags > env vars > config file > defaults
-- [ ] **CLI-03**: User can pass `--hub-url`, `--api-key`, `--project-slug` via flags or env vars (ARCANON_HUB_URL, ARCANON_API_KEY, ARCANON_PROJECT_SLUG)
-- [ ] **CLI-04**: User can write payload to file with `--output <FILE>` instead of uploading
-- [ ] **CLI-05**: User can inspect payload without side effects using `--dry-run`
-- [ ] **CLI-06**: User can increase log verbosity with `-v` (info), `-vv` (debug), `-vvv` (trace)
-- [ ] **CLI-07**: User can print version with `--version`
-- [ ] **CLI-08**: User can filter plugins with `--plugins <LIST>` (comma-separated)
-- [ ] **CLI-09**: User can add exclude patterns with `--exclude <GLOB>` (repeatable)
-- [ ] **CLI-10**: User can override git detection with `--repo-url`, `--branch`, `--commit-sha`
-- [ ] **CLI-11**: Scanner exits 0 on success, 1 on upload failure after retries, 2 on invalid arguments
+- [x] **CLI-01**: User can run `arcanon-scanner [PATH]` with sensible defaults and no config file required
+- [x] **CLI-02**: User can configure scanner via `.arcanon.toml` with precedence: CLI flags > env vars > config file > defaults
+- [x] **CLI-03**: User can pass `--hub-url`, `--api-key`, `--project-slug` via flags or env vars (ARCANON_HUB_URL, ARCANON_API_KEY, ARCANON_PROJECT_SLUG)
+- [x] **CLI-04**: User can write payload to file with `--output <FILE>` instead of uploading
+- [x] **CLI-05**: User can inspect payload without side effects using `--dry-run`
+- [x] **CLI-06**: User can increase log verbosity with `-v` (info), `-vv` (debug), `-vvv` (trace)
+- [x] **CLI-07**: User can print version with `--version`
+- [x] **CLI-08**: User can filter plugins with `--plugins <LIST>` (comma-separated)
+- [x] **CLI-09**: User can add exclude patterns with `--exclude <GLOB>` (repeatable)
+- [x] **CLI-10**: User can override git detection with `--repo-url`, `--branch`, `--commit-sha`
+- [x] **CLI-11**: Scanner exits 0 on success, 1 on upload failure after retries, 2 on invalid arguments
 
 ### File Discovery
 
-- [x] **DISC-01**: Scanner walks directories using ignore crate, respecting nested .gitignore files at every level
-- [x] **DISC-02**: Scanner applies built-in excludes (.git/, node_modules/, __pycache__/, target/, dist/, build/, .next/, vendor/)
-- [x] **DISC-03**: Scanner skips files exceeding 500KB, lines exceeding 10,000 chars, and binary files (null bytes in first 8KB)
-- [x] **DISC-04**: Scanner applies additional exclude patterns from `.arcanon.toml` and `--exclude` flags
-- [x] **DISC-05**: Scanner does not follow symlinks
+- [ ] **DISC-01**: Scanner walks directories using ignore crate, respecting nested .gitignore files at every level
+- [ ] **DISC-02**: Scanner applies built-in excludes (.git/, node_modules/, __pycache__/, target/, dist/, build/, .next/, vendor/)
+- [ ] **DISC-03**: Scanner skips files exceeding 500KB, lines exceeding 10,000 chars, and binary files (null bytes in first 8KB)
+- [ ] **DISC-04**: Scanner applies additional exclude patterns from `.arcanon.toml` and `--exclude` flags
+- [ ] **DISC-05**: Scanner does not follow symlinks
 
 ### Git Context
 
-- [x] **GIT-01**: Scanner detects repo URL from first remote (origin preferred) using gix
-- [x] **GIT-02**: Scanner detects branch from HEAD ref, falling back to CI env vars (GITHUB_REF_NAME, CI_COMMIT_BRANCH, BRANCH_NAME), then "detached"
-- [x] **GIT-03**: Scanner detects commit SHA from HEAD, falling back to CI env vars, then deterministic content hash
-- [x] **GIT-04**: Scanner derives repo_name from remote URL basename minus .git suffix, falling back to directory name
+- [ ] **GIT-01**: Scanner detects repo URL from first remote (origin preferred) using gix
+- [ ] **GIT-02**: Scanner detects branch from HEAD ref, falling back to CI env vars (GITHUB_REF_NAME, CI_COMMIT_BRANCH, BRANCH_NAME), then "detached"
+- [ ] **GIT-03**: Scanner detects commit SHA from HEAD, falling back to CI env vars, then deterministic content hash
+- [ ] **GIT-04**: Scanner derives repo_name from remote URL basename minus .git suffix, falling back to directory name
 
 ### Variable Resolution
 
@@ -107,13 +107,13 @@
 
 ### Build Tooling
 
-- [ ] **BLDG-01**: Makefile includes `lint` target running clippy with deny warnings
-- [ ] **BLDG-02**: Makefile includes `fmt` target running rustfmt check
-- [ ] **BLDG-03**: Makefile includes `test` target running cargo test
-- [ ] **BLDG-04**: Makefile includes `build` target for debug and release builds
-- [ ] **BLDG-05**: GitHub Actions workflow runs lint, fmt, test on push/PR for Linux amd64
-- [ ] **BLDG-06**: GitHub Actions workflow builds release binary for x86_64-unknown-linux-musl
-- [ ] **BLDG-07**: Release profile configured with LTO, single codegen unit, symbol stripping for < 15MB binary
+- [x] **BLDG-01**: Makefile includes `lint` target running clippy with deny warnings
+- [x] **BLDG-02**: Makefile includes `fmt` target running rustfmt check
+- [x] **BLDG-03**: Makefile includes `test` target running cargo test
+- [x] **BLDG-04**: Makefile includes `build` target for debug and release builds
+- [x] **BLDG-05**: GitHub Actions workflow runs lint, fmt, test on push/PR for Linux amd64
+- [x] **BLDG-06**: GitHub Actions workflow builds release binary for x86_64-unknown-linux-musl
+- [x] **BLDG-07**: Release profile configured with LTO, single codegen unit, symbol stripping for < 15MB binary
 
 ## v2 Requirements
 
@@ -157,33 +157,33 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLI-01 | Phase 1 | Pending |
-| CLI-02 | Phase 1 | Pending |
-| CLI-03 | Phase 1 | Pending |
-| CLI-04 | Phase 1 | Pending |
-| CLI-05 | Phase 1 | Pending |
-| CLI-06 | Phase 1 | Pending |
-| CLI-07 | Phase 1 | Pending |
-| CLI-08 | Phase 1 | Pending |
-| CLI-09 | Phase 1 | Pending |
-| CLI-10 | Phase 1 | Pending |
-| CLI-11 | Phase 1 | Pending |
-| BLDG-01 | Phase 1 | Pending |
-| BLDG-02 | Phase 1 | Pending |
-| BLDG-03 | Phase 1 | Pending |
-| BLDG-04 | Phase 1 | Pending |
-| BLDG-05 | Phase 1 | Pending |
-| BLDG-06 | Phase 1 | Pending |
-| BLDG-07 | Phase 1 | Pending |
-| DISC-01 | Phase 2 | Complete |
-| DISC-02 | Phase 2 | Complete |
-| DISC-03 | Phase 2 | Complete |
-| DISC-04 | Phase 2 | Complete |
-| DISC-05 | Phase 2 | Complete |
-| GIT-01 | Phase 2 | Complete |
-| GIT-02 | Phase 2 | Complete |
-| GIT-03 | Phase 2 | Complete |
-| GIT-04 | Phase 2 | Complete |
+| CLI-01 | Phase 1 | Complete |
+| CLI-02 | Phase 1 | Complete |
+| CLI-03 | Phase 1 | Complete |
+| CLI-04 | Phase 1 | Complete |
+| CLI-05 | Phase 1 | Complete |
+| CLI-06 | Phase 1 | Complete |
+| CLI-07 | Phase 1 | Complete |
+| CLI-08 | Phase 1 | Complete |
+| CLI-09 | Phase 1 | Complete |
+| CLI-10 | Phase 1 | Complete |
+| CLI-11 | Phase 1 | Complete |
+| BLDG-01 | Phase 1 | Complete |
+| BLDG-02 | Phase 1 | Complete |
+| BLDG-03 | Phase 1 | Complete |
+| BLDG-04 | Phase 1 | Complete |
+| BLDG-05 | Phase 1 | Complete |
+| BLDG-06 | Phase 1 | Complete |
+| BLDG-07 | Phase 1 | Complete |
+| DISC-01 | Phase 2 | Pending |
+| DISC-02 | Phase 2 | Pending |
+| DISC-03 | Phase 2 | Pending |
+| DISC-04 | Phase 2 | Pending |
+| DISC-05 | Phase 2 | Pending |
+| GIT-01 | Phase 2 | Pending |
+| GIT-02 | Phase 2 | Pending |
+| GIT-03 | Phase 2 | Pending |
+| GIT-04 | Phase 2 | Pending |
 | VARS-01 | Phase 2 | Pending |
 | VARS-02 | Phase 2 | Pending |
 | VARS-03 | Phase 2 | Pending |
