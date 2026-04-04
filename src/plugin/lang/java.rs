@@ -47,9 +47,10 @@ fn detect_spring_framework(ctx: &ExtractionContext) -> bool {
                 return true;
             }
         } else if file.relative_path.ends_with("build.gradle")
-            && file.content.contains("spring-boot-starter-web") {
-                return true;
-            }
+            && file.content.contains("spring-boot-starter-web")
+        {
+            return true;
+        }
     }
     false
 }
@@ -61,7 +62,10 @@ fn extract_routes_from_file(
     result: &mut ExtractionResult,
 ) {
     let mut parser = Parser::new();
-    if parser.set_language(&tree_sitter_java::LANGUAGE.into()).is_err() {
+    if parser
+        .set_language(&tree_sitter_java::LANGUAGE.into())
+        .is_err()
+    {
         return;
     }
 
@@ -121,10 +125,9 @@ fn extract_class_prefixes(
 fn extract_prefix_from_modifiers(node: tree_sitter::Node, source: &str, prefix: &mut String) {
     let mut cursor = node.walk();
     for annotation in node.children(&mut cursor) {
-        if annotation.kind() == "annotation"
-            && is_route_annotation(annotation, source) {
-                extract_path_from_annotation(annotation, source, prefix);
-            }
+        if annotation.kind() == "annotation" && is_route_annotation(annotation, source) {
+            extract_path_from_annotation(annotation, source, prefix);
+        }
     }
 }
 
@@ -167,11 +170,12 @@ fn extract_path_from_arg_list(node: tree_sitter::Node, source: &str, path: &mut 
                             key = k.to_string();
                         }
                     } else if pair_child.kind() == "string_literal"
-                        && matches!(key.as_str(), "value" | "path") {
-                            if let Ok(v) = pair_child.utf8_text(source.as_bytes()) {
-                                *path = v.trim_matches('"').to_string();
-                            }
+                        && matches!(key.as_str(), "value" | "path")
+                    {
+                        if let Ok(v) = pair_child.utf8_text(source.as_bytes()) {
+                            *path = v.trim_matches('"').to_string();
                         }
+                    }
                 }
             }
             _ => {}
@@ -303,7 +307,6 @@ fn find_enclosing_class_name(method_node: tree_sitter::Node, source: &str) -> St
     String::new()
 }
 
-
 fn extract_connections_from_file(
     content: &str,
     relative_path: &str,
@@ -313,6 +316,16 @@ fn extract_connections_from_file(
     // RestTemplate detection
     if content.contains("RestTemplate") || content.contains("restTemplate") {
         detect_rest_template(content, relative_path, ctx, result);
+    }
+
+    // WebClient detection (Spring WebFlux)
+    if content.contains("WebClient") {
+        detect_web_client(content, relative_path, ctx, result);
+    }
+
+    // FeignClient detection
+    if content.contains("FeignClient") {
+        detect_feign_client(content, relative_path, ctx, result);
     }
 
     // gRPC detection
@@ -342,26 +355,116 @@ fn detect_rest_template(
     ctx: &ExtractionContext,
     result: &mut ExtractionResult,
 ) {
-    // Simple pattern matching for RestTemplate method calls
-    let methods = ["getForObject", "postForObject", "exchange", "getForEntity"];
-    for method in &methods {
-        if content.contains(method) {
-            let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
-                .unwrap_or("unknown")
-                .to_string();
+    let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+        .unwrap_or("unknown")
+        .to_string();
 
+    let methods = [
+        "getForObject",
+        "postForObject",
+        "postForEntity",
+        "getForEntity",
+        "exchange",
+        "delete",
+        "put",
+    ];
+
+    for (line_num, line) in content.lines().enumerate() {
+        for method in &methods {
+            let pattern = format!("restTemplate.{}(", method);
+            if line.contains(&pattern) {
+                // Try to extract URL/path from the line
+                let evidence = extract_url_evidence(line, method);
+                result.connections.push(crate::types::ConnectionInfo {
+                    source_service: service_name.clone(),
+                    target_name: "unknown".to_string(),
+                    protocol: "rest".to_string(),
+                    method: Some(extract_http_method_from_template(method)),
+                    path: None,
+                    source_file: format!("{}:{}", relative_path, line_num + 1),
+                    confidence: Confidence::High,
+                    extraction_method: "java_rest_template".to_string(),
+                    evidence: Some(evidence),
+                });
+                return; // Report once per file
+            }
+        }
+    }
+}
+
+fn detect_web_client(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+        .unwrap_or("unknown")
+        .to_string();
+
+    for (line_num, line) in content.lines().enumerate() {
+        if line.contains("WebClient.create(")
+            || line.contains("webClient.get()")
+            || line.contains("webClient.post()")
+            || line.contains("webClient.put()")
+            || line.contains("webClient.delete()")
+        {
+            let evidence = extract_webclient_evidence(line);
             result.connections.push(crate::types::ConnectionInfo {
-                source_service: service_name,
+                source_service: service_name.clone(),
                 target_name: "unknown".to_string(),
                 protocol: "rest".to_string(),
                 method: None,
                 path: None,
-                source_file: format!("{}:1", relative_path),
-                confidence: Confidence::Medium,
-                extraction_method: "java_rest_template".to_string(),
-                evidence: Some(format!("RestTemplate.{} call detected", method)),
+                source_file: format!("{}:{}", relative_path, line_num + 1),
+                confidence: Confidence::High,
+                extraction_method: "java_web_client".to_string(),
+                evidence: Some(evidence),
             });
-            break;
+            return; // Report once per file
+        }
+    }
+}
+
+fn detect_feign_client(
+    content: &str,
+    relative_path: &str,
+    ctx: &ExtractionContext,
+    result: &mut ExtractionResult,
+) {
+    let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+        .unwrap_or("unknown")
+        .to_string();
+
+    for (line_num, line) in content.lines().enumerate() {
+        if line.contains("@FeignClient") {
+            let (client_name, url) = extract_feign_client_info(line, content);
+            let evidence = format!(
+                "FeignClient annotation{}{}",
+                if let Some(name) = &client_name {
+                    format!(" with name '{}'", name)
+                } else {
+                    String::new()
+                },
+                if url.is_some() {
+                    " with URL defined".to_string()
+                } else {
+                    String::new()
+                }
+            );
+
+            result.connections.push(crate::types::ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: client_name.unwrap_or_else(|| "feign-client".to_string()),
+                protocol: "rest".to_string(),
+                method: None,
+                path: url,
+                source_file: format!("{}:{}", relative_path, line_num + 1),
+                confidence: Confidence::High,
+                extraction_method: "java_feign_client".to_string(),
+                evidence: Some(evidence),
+            });
+            return; // Report once per file
         }
     }
 }
@@ -372,27 +475,25 @@ fn detect_grpc(
     ctx: &ExtractionContext,
     result: &mut ExtractionResult,
 ) {
-    // Look for ServiceGrpc.newBlockingStub pattern
-    if let Some(start) = content.find("Grpc.new") {
-        if let Some(class_end) = content[..start].rfind(' ') {
-            let class_part = &content[class_end + 1..start];
-            if class_part.contains("Service") {
-                let target_name = class_part.replace("Service", "");
-                let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
-                    .unwrap_or("unknown")
-                    .to_string();
+    let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+        .unwrap_or("unknown")
+        .to_string();
 
+    for (line_num, line) in content.lines().enumerate() {
+        if line.contains("Grpc.newBlockingStub(") || line.contains("Grpc.newStub(") {
+            if let Some(service_target) = extract_grpc_service_name(line) {
                 result.connections.push(crate::types::ConnectionInfo {
-                    source_service: service_name,
-                    target_name,
+                    source_service: service_name.clone(),
+                    target_name: service_target.clone(),
                     protocol: "grpc".to_string(),
                     method: None,
                     path: None,
-                    source_file: format!("{}:1", relative_path),
+                    source_file: format!("{}:{}", relative_path, line_num + 1),
                     confidence: Confidence::High,
                     extraction_method: "java_grpc".to_string(),
-                    evidence: Some(format!("{}Grpc.newBlockingStub() call", class_part)),
+                    evidence: Some(format!("{}Grpc.newBlockingStub() call", service_target)),
                 });
+                return; // Report once per file
             }
         }
     }
@@ -404,22 +505,40 @@ fn detect_rabbit_mq(
     ctx: &ExtractionContext,
     result: &mut ExtractionResult,
 ) {
-    if content.contains("convertAndSend") || content.contains("basicPublish") {
-        let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
-            .unwrap_or("unknown")
-            .to_string();
+    let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+        .unwrap_or("unknown")
+        .to_string();
 
-        result.connections.push(crate::types::ConnectionInfo {
-            source_service: service_name,
-            target_name: "rabbitmq".to_string(),
-            protocol: "amqp".to_string(),
-            method: None,
-            path: None,
-            source_file: format!("{}:1", relative_path),
-            confidence: Confidence::High,
-            extraction_method: "java_rabbit_mq".to_string(),
-            evidence: Some("RabbitTemplate message publish detected".to_string()),
-        });
+    for (line_num, line) in content.lines().enumerate() {
+        if line.contains("convertAndSend(") {
+            let (exchange, routing_key) = extract_exchange_and_key(line);
+            let evidence = format!(
+                "RabbitTemplate.convertAndSend() call detected{}{}",
+                if let Some(ex) = &exchange {
+                    format!(" to exchange '{}'", ex)
+                } else {
+                    String::new()
+                },
+                if let Some(rk) = &routing_key {
+                    format!(" with routing key '{}'", rk)
+                } else {
+                    String::new()
+                }
+            );
+
+            result.connections.push(crate::types::ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: exchange.unwrap_or_else(|| "rabbitmq".to_string()),
+                protocol: "amqp".to_string(),
+                method: None,
+                path: routing_key,
+                source_file: format!("{}:{}", relative_path, line_num + 1),
+                confidence: Confidence::High,
+                extraction_method: "java_rabbit_mq".to_string(),
+                evidence: Some(evidence),
+            });
+            return; // Report once per file
+        }
     }
 }
 
@@ -429,22 +548,35 @@ fn detect_kafka(
     ctx: &ExtractionContext,
     result: &mut ExtractionResult,
 ) {
-    if content.contains("kafkaTemplate.send") {
-        let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
-            .unwrap_or("unknown")
-            .to_string();
+    let service_name = scope_to_service(&ctx.root.join(relative_path), &ctx.service_roots)
+        .unwrap_or("unknown")
+        .to_string();
 
-        result.connections.push(crate::types::ConnectionInfo {
-            source_service: service_name,
-            target_name: "kafka".to_string(),
-            protocol: "kafka".to_string(),
-            method: None,
-            path: None,
-            source_file: format!("{}:1", relative_path),
-            confidence: Confidence::High,
-            extraction_method: "java_kafka".to_string(),
-            evidence: Some("KafkaTemplate.send() call detected".to_string()),
-        });
+    for (line_num, line) in content.lines().enumerate() {
+        if line.contains("kafkaTemplate.send(") {
+            let topic = extract_first_string_arg(line);
+            let evidence = format!(
+                "KafkaTemplate.send() call detected{}",
+                if let Some(t) = &topic {
+                    format!(" to topic '{}'", t)
+                } else {
+                    String::new()
+                }
+            );
+
+            result.connections.push(crate::types::ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: topic.unwrap_or_else(|| "kafka".to_string()),
+                protocol: "kafka".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:{}", relative_path, line_num + 1),
+                confidence: Confidence::High,
+                extraction_method: "java_kafka".to_string(),
+                evidence: Some(evidence),
+            });
+            return; // Report once per file
+        }
     }
 }
 
@@ -473,6 +605,143 @@ fn detect_jdbc(
     }
 }
 
+// Helper functions for evidence extraction
+
+fn extract_url_evidence(line: &str, method: &str) -> String {
+    if let Some(url) = extract_first_string_arg(line) {
+        format!("RestTemplate.{}() call to '{}'", method, url)
+    } else {
+        format!("RestTemplate.{}() call detected", method)
+    }
+}
+
+fn extract_http_method_from_template(template_method: &str) -> String {
+    match template_method {
+        "getForObject" | "getForEntity" => "GET",
+        "postForObject" | "postForEntity" => "POST",
+        "put" => "PUT",
+        "delete" => "DELETE",
+        "exchange" => "GET", // Default for exchange
+        _ => "GET",
+    }
+    .to_string()
+}
+
+fn extract_first_string_arg(line: &str) -> Option<String> {
+    // Find the opening parenthesis
+    if let Some(start_paren) = line.find('(') {
+        let after_paren = &line[start_paren + 1..];
+        // Look for quoted string
+        if let Some(quote_start) = after_paren.find('"') {
+            let after_quote = &after_paren[quote_start + 1..];
+            if let Some(quote_end) = after_quote.find('"') {
+                return Some(after_quote[..quote_end].to_string());
+            }
+        }
+    }
+    None
+}
+
+fn extract_exchange_and_key(line: &str) -> (Option<String>, Option<String>) {
+    // Extract first two string arguments from convertAndSend
+    // Format: convertAndSend("exchange", "routing_key", ...)
+    if let Some(start_paren) = line.find('(') {
+        let after_paren = &line[start_paren + 1..];
+
+        // Find first string
+        let first_string = after_paren.find('"').and_then(|quote_start| {
+            let after_quote = &after_paren[quote_start + 1..];
+            after_quote
+                .find('"')
+                .map(|quote_end| after_quote[..quote_end].to_string())
+        });
+
+        // Find second string after first quote ends
+        let second_string = first_string.as_ref().and_then(|exchange| {
+            after_paren.find('"').and_then(|first_quote_pos| {
+                let search_start = first_quote_pos + 1 + exchange.len() + 1;
+                if search_start < after_paren.len() {
+                    after_paren[search_start..]
+                        .find('"')
+                        .and_then(|quote_start| {
+                            let after_quote = &after_paren[search_start + quote_start + 1..];
+                            after_quote
+                                .find('"')
+                                .map(|quote_end| after_quote[..quote_end].to_string())
+                        })
+                } else {
+                    None
+                }
+            })
+        });
+
+        (first_string, second_string)
+    } else {
+        (None, None)
+    }
+}
+
+fn extract_grpc_service_name(line: &str) -> Option<String> {
+    // Extract service name from patterns like:
+    // OrderServiceGrpc.newBlockingStub(channel)
+    // this.stub = OrderServiceGrpc.newBlockingStub(channel)
+    if let Some(grpc_pos) = line.find("Grpc.") {
+        // Look backwards to find the class name
+        let before_grpc = &line[..grpc_pos];
+        // Find the last whitespace or assignment operator
+        let mut service_name = String::new();
+        for ch in before_grpc.chars().rev() {
+            if ch.is_whitespace() || ch == '=' || ch == '(' || ch == ',' {
+                break;
+            }
+            service_name.insert(0, ch);
+        }
+
+        // Return the extracted service name as-is (e.g., "OrderService" from "OrderServiceGrpc")
+        if !service_name.is_empty() {
+            return Some(service_name);
+        }
+    }
+    None
+}
+
+fn extract_webclient_evidence(line: &str) -> String {
+    if let Some(url) = extract_first_string_arg(line) {
+        format!("WebClient call to '{}'", url)
+    } else if line.contains("WebClient.create(") {
+        "WebClient.create() call detected".to_string()
+    } else if line.contains("webClient.get()") {
+        "WebClient GET request detected".to_string()
+    } else if line.contains("webClient.post()") {
+        "WebClient POST request detected".to_string()
+    } else if line.contains("webClient.put()") {
+        "WebClient PUT request detected".to_string()
+    } else if line.contains("webClient.delete()") {
+        "WebClient DELETE request detected".to_string()
+    } else {
+        "WebClient call detected".to_string()
+    }
+}
+
+fn extract_feign_client_info(_line: &str, content: &str) -> (Option<String>, Option<String>) {
+    // Extract FeignClient name and url
+    // Format: @FeignClient(name = "service-name", url = "http://...")
+    let name = extract_feign_param(content, "name");
+    let url = extract_feign_param(content, "url");
+    (name, url)
+}
+
+fn extract_feign_param(content: &str, param: &str) -> Option<String> {
+    // Look for pattern: param = "value"
+    let pattern = format!("{} = \"", param);
+    if let Some(pos) = content.find(&pattern) {
+        let after_eq = &content[pos + pattern.len()..];
+        if let Some(quote_end) = after_eq.find('"') {
+            return Some(after_eq[..quote_end].to_string());
+        }
+    }
+    None
+}
 
 #[cfg(test)]
 mod tests {
@@ -518,9 +787,13 @@ public class OrdersController {
         let ctx = create_test_context(vec![
             (
                 "pom.xml".to_string(),
-                "<dependency><artifactId>spring-boot-starter-web</artifactId></dependency>".to_string(),
+                "<dependency><artifactId>spring-boot-starter-web</artifactId></dependency>"
+                    .to_string(),
             ),
-            ("src/OrdersController.java".to_string(), java_code.to_string()),
+            (
+                "src/OrdersController.java".to_string(),
+                java_code.to_string(),
+            ),
         ]);
 
         let plugin = JavaPlugin;
@@ -543,7 +816,8 @@ public class UserController {
         let ctx = create_test_context(vec![
             (
                 "pom.xml".to_string(),
-                "<dependency><artifactId>spring-boot-starter-web</artifactId></dependency>".to_string(),
+                "<dependency><artifactId>spring-boot-starter-web</artifactId></dependency>"
+                    .to_string(),
             ),
             ("src/UserController.java".to_string(), java_code.to_string()),
         ]);
@@ -565,7 +839,10 @@ public class UserController {
     public void listUsers() {}
 }
 "#;
-        let ctx = create_test_context(vec![("src/UserController.java".to_string(), java_code.to_string())]);
+        let ctx = create_test_context(vec![(
+            "src/UserController.java".to_string(),
+            java_code.to_string(),
+        )]);
 
         let plugin = JavaPlugin;
         let result = plugin.extract(&ctx);
@@ -585,7 +862,10 @@ public class OrderService {
     }
 }
 "#;
-        let ctx = create_test_context(vec![("src/OrderService.java".to_string(), java_code.to_string())]);
+        let ctx = create_test_context(vec![(
+            "src/OrderService.java".to_string(),
+            java_code.to_string(),
+        )]);
 
         let plugin = JavaPlugin;
         let result = plugin.extract(&ctx);
@@ -608,7 +888,10 @@ public class OrderClient {
     }
 }
 "#;
-        let ctx = create_test_context(vec![("src/OrderClient.java".to_string(), java_code.to_string())]);
+        let ctx = create_test_context(vec![(
+            "src/OrderClient.java".to_string(),
+            java_code.to_string(),
+        )]);
 
         let plugin = JavaPlugin;
         let result = plugin.extract(&ctx);
@@ -631,7 +914,10 @@ public class OrderPublisher {
     }
 }
 "#;
-        let ctx = create_test_context(vec![("src/OrderPublisher.java".to_string(), java_code.to_string())]);
+        let ctx = create_test_context(vec![(
+            "src/OrderPublisher.java".to_string(),
+            java_code.to_string(),
+        )]);
 
         let plugin = JavaPlugin;
         let result = plugin.extract(&ctx);
@@ -639,7 +925,8 @@ public class OrderPublisher {
         assert!(!result.connections.is_empty());
         let conn = &result.connections[0];
         assert_eq!(conn.protocol, "amqp");
-        assert_eq!(conn.target_name, "rabbitmq");
+        // Now extracts the exchange name as target_name
+        assert_eq!(conn.target_name, "orders");
     }
 
     #[test]
@@ -654,7 +941,10 @@ public class EventPublisher {
     }
 }
 "#;
-        let ctx = create_test_context(vec![("src/EventPublisher.java".to_string(), java_code.to_string())]);
+        let ctx = create_test_context(vec![(
+            "src/EventPublisher.java".to_string(),
+            java_code.to_string(),
+        )]);
 
         let plugin = JavaPlugin;
         let result = plugin.extract(&ctx);
@@ -676,7 +966,10 @@ public class OrderRepository {
     }
 }
 "#;
-        let ctx = create_test_context(vec![("src/OrderRepository.java".to_string(), java_code.to_string())]);
+        let ctx = create_test_context(vec![(
+            "src/OrderRepository.java".to_string(),
+            java_code.to_string(),
+        )]);
 
         let plugin = JavaPlugin;
         let result = plugin.extract(&ctx);
@@ -685,5 +978,165 @@ public class OrderRepository {
         let conn = &result.connections[0];
         assert_eq!(conn.protocol, "postgresql");
         assert_eq!(conn.extraction_method, "java_jdbc");
+    }
+
+    #[test]
+    fn test_web_client_detection() {
+        let java_code = r#"
+public class ApiClient {
+    private WebClient webClient;
+
+    public void fetchData() {
+        webClient.get().uri("https://api.example.com/data").retrieve().bodyToMono(String.class);
+    }
+}
+"#;
+        let ctx = create_test_context(vec![(
+            "src/ApiClient.java".to_string(),
+            java_code.to_string(),
+        )]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.extraction_method, "java_web_client");
+        assert_eq!(conn.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn test_feign_client_detection() {
+        let java_code = r#"
+@FeignClient(name = "user-service", url = "http://user-service:8080")
+public interface UserServiceClient {
+    @GetMapping("/users/{id}")
+    User getUser(@PathVariable String id);
+}
+"#;
+        let ctx = create_test_context(vec![(
+            "src/UserServiceClient.java".to_string(),
+            java_code.to_string(),
+        )]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.extraction_method, "java_feign_client");
+        assert_eq!(conn.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn test_rest_template_with_url_extraction() {
+        let java_code = r#"
+public class OrderClient {
+    @Autowired
+    private RestTemplate restTemplate;
+
+    public Order getOrder(String id) {
+        Order order = restTemplate.getForObject("http://order-service/orders/" + id, Order.class);
+        return order;
+    }
+}
+"#;
+        let ctx = create_test_context(vec![(
+            "src/OrderClient.java".to_string(),
+            java_code.to_string(),
+        )]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.confidence, Confidence::High);
+        assert!(conn.evidence.is_some());
+    }
+
+    #[test]
+    fn test_kafka_with_topic_extraction() {
+        let java_code = r#"
+public class EventPublisher {
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    public void publishEvent(String message) {
+        kafkaTemplate.send("order-events", message);
+    }
+}
+"#;
+        let ctx = create_test_context(vec![(
+            "src/EventPublisher.java".to_string(),
+            java_code.to_string(),
+        )]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "kafka");
+        assert_eq!(conn.target_name, "order-events");
+        assert!(conn.evidence.is_some());
+    }
+
+    #[test]
+    fn test_rabbit_mq_with_exchange_extraction() {
+        let java_code = r#"
+public class MessagePublisher {
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    public void publishMessage(String message) {
+        rabbitTemplate.convertAndSend("order.exchange", "order.key", message);
+    }
+}
+"#;
+        let ctx = create_test_context(vec![(
+            "src/MessagePublisher.java".to_string(),
+            java_code.to_string(),
+        )]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "amqp");
+        assert_eq!(conn.target_name, "order.exchange");
+        assert_eq!(conn.path, Some("order.key".to_string()));
+        assert!(conn.evidence.is_some());
+    }
+
+    #[test]
+    fn test_grpc_service_extraction() {
+        let java_code = r#"
+public class OrderServiceClient {
+    private OrderServiceGrpc.OrderServiceBlockingStub stub;
+
+    public Order getOrder(String id) {
+        this.stub = OrderServiceGrpc.newBlockingStub(channel);
+        return stub.getOrder(GetOrderRequest.newBuilder().setId(id).build());
+    }
+}
+"#;
+        let ctx = create_test_context(vec![(
+            "src/OrderServiceClient.java".to_string(),
+            java_code.to_string(),
+        )]);
+
+        let plugin = JavaPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "grpc");
+        assert_eq!(conn.extraction_method, "java_grpc");
+        assert!(conn.target_name.contains("OrderService"));
     }
 }
