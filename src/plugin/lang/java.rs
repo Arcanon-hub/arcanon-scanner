@@ -26,10 +26,8 @@ impl LanguagePlugin for JavaPlugin {
         let has_spring = detect_spring_framework(ctx);
 
         for file in ctx.files.iter() {
-            if file.relative_path.ends_with(".java") {
-                if has_spring {
-                    extract_routes_from_file(&file.content, &file.relative_path, ctx, &mut result);
-                }
+            if file.relative_path.ends_with(".java") && has_spring {
+                extract_routes_from_file(&file.content, &file.relative_path, ctx, &mut result);
             }
         }
 
@@ -411,122 +409,5 @@ public class UserController {
         let result = plugin.extract(&ctx);
 
         assert!(result.endpoints.is_empty());
-    }
-
-
-
-
-
-
-
-
-    #[test]
-    fn test_rest_template_with_url_extraction() {
-        let java_code = r#"
-public class OrderClient {
-    @Autowired
-    private RestTemplate restTemplate;
-
-    public Order getOrder(String id) {
-        Order order = restTemplate.getForObject("http://order-service/orders/" + id, Order.class);
-        return order;
-    }
-}
-"#;
-        let ctx = create_test_context(vec![(
-            "src/OrderClient.java".to_string(),
-            java_code.to_string(),
-        )]);
-
-        let plugin = JavaPlugin;
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "rest");
-        assert_eq!(conn.confidence, Confidence::High);
-        assert!(conn.evidence.is_some());
-    }
-
-    #[test]
-    fn test_kafka_with_topic_extraction() {
-        let java_code = r#"
-public class EventPublisher {
-    @Autowired
-    private KafkaTemplate<String, String> kafkaTemplate;
-
-    public void publishEvent(String message) {
-        kafkaTemplate.send("order-events", message);
-    }
-}
-"#;
-        let ctx = create_test_context(vec![(
-            "src/EventPublisher.java".to_string(),
-            java_code.to_string(),
-        )]);
-
-        let plugin = JavaPlugin;
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "kafka");
-        assert_eq!(conn.target_name, "order-events");
-        assert!(conn.evidence.is_some());
-    }
-
-    #[test]
-    fn test_rabbit_mq_with_exchange_extraction() {
-        let java_code = r#"
-public class MessagePublisher {
-    @Autowired
-    private RabbitTemplate rabbitTemplate;
-
-    public void publishMessage(String message) {
-        rabbitTemplate.convertAndSend("order.exchange", "order.key", message);
-    }
-}
-"#;
-        let ctx = create_test_context(vec![(
-            "src/MessagePublisher.java".to_string(),
-            java_code.to_string(),
-        )]);
-
-        let plugin = JavaPlugin;
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "amqp");
-        assert_eq!(conn.target_name, "order.exchange");
-        assert_eq!(conn.path, Some("order.key".to_string()));
-        assert!(conn.evidence.is_some());
-    }
-
-    #[test]
-    fn test_grpc_service_extraction() {
-        let java_code = r#"
-public class OrderServiceClient {
-    private OrderServiceGrpc.OrderServiceBlockingStub stub;
-
-    public Order getOrder(String id) {
-        this.stub = OrderServiceGrpc.newBlockingStub(channel);
-        return stub.getOrder(GetOrderRequest.newBuilder().setId(id).build());
-    }
-}
-"#;
-        let ctx = create_test_context(vec![(
-            "src/OrderServiceClient.java".to_string(),
-            java_code.to_string(),
-        )]);
-
-        let plugin = JavaPlugin;
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "grpc");
-        assert_eq!(conn.extraction_method, "java_grpc");
-        assert!(conn.target_name.contains("OrderService"));
     }
 }

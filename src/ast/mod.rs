@@ -27,6 +27,7 @@ pub struct AstHelper {
 pub struct QueryMatch {
     pub capture_name: String,
     pub node_text: String,
+    #[allow(dead_code)] // used by pattern engine (Phase 5 Plan 04)
     pub line: usize, // 1-indexed
 }
 

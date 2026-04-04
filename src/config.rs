@@ -10,6 +10,7 @@ pub struct ArcanonConfig {
     /// User-defined patterns from [[patterns]] array (D-10/D-11).
     /// These override remote patterns by ID.
     #[serde(default, rename = "patterns")]
+    #[allow(dead_code)] // wired in Phase 5 Plan 04
     pub user_patterns: Vec<PatternOverride>,
 }
 
