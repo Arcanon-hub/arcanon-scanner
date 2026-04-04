@@ -104,7 +104,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Infrastructure | 3/3 | Complete | 2026-04-04 |
 | 3. Pipeline and Config Plugins | 5/5 | Complete | 2026-04-04 |
 | 4. Language Plugins and Hardening | 8/8 | Complete | 2026-04-04 |
-| 5. Pattern Engine | 0/5 | Not started | - |
+| 5. Pattern Engine | 1/5 | In Progress|  |
 
 ### Phase 5: Pattern Engine
 **Goal**: Scanner fetches detection patterns from https://patterns.arcanon.dev/v1/patterns.json at startup, caches locally, merges with .arcanon.toml overrides, and applies them alongside compiled plugins — so new library detections never require a scanner release
@@ -120,7 +120,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 Plans:
 - [ ] 05-01-PLAN.md — Pattern module: types, ETag fetch/cache, fallback chain, apply() engine with all extraction strategies
-- [ ] 05-02-PLAN.md — Config extension: [[patterns]] user overrides and [scanner.patterns] disabled list in .arcanon.toml
+- [x] 05-02-PLAN.md — Config extension: [[patterns]] user overrides and [scanner.patterns] disabled list in .arcanon.toml
 - [ ] 05-03-PLAN.md — Strip compiled connection detection from all 7 language plugins (routes only remain)
 - [ ] 05-04-PLAN.md — Wire pattern engine into scanner.rs pipeline + payload metadata (pattern_version, pattern_source)
 - [ ] 05-05-PLAN.md — Integration tests: 14 tests covering all PTRN requirements
