@@ -29,7 +29,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. All CLI flags (--hub-url, --api-key, --project-slug, --output, --dry-run, --plugins, --exclude, -v/-vv/-vvv, --repo-url, --branch, --commit-sha) are parsed without error
   4. `make lint`, `make fmt`, `make test`, `make build` all succeed
   5. CI passes on push: clippy with denied warnings, rustfmt check, cargo test, musl binary build, and `cargo tree --duplicates | grep tree-sitter` returns clean
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Cargo.toml with pinned dependencies and all source module stubs
+- [ ] 01-02-PLAN.md — All shared types, LanguagePlugin trait, AstParser wrapper, VariableStore stub
+- [ ] 01-03-PLAN.md — Full CLI entry point (clap Cli struct, tracing init, argument parsing tests)
+- [ ] 01-04-PLAN.md — Makefile targets and GitHub Actions CI workflow
 
 ### Phase 2: Infrastructure
 **Goal**: The scanner can discover all eligible files in a repo, attach verified git context, and build a populated VariableStore before any plugin runs
@@ -73,7 +79,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/4 | In progress | - |
 | 2. Infrastructure | 0/TBD | Not started | - |
 | 3. Pipeline and Config Plugins | 0/TBD | Not started | - |
 | 4. Language Plugins and Hardening | 0/TBD | Not started | - |
