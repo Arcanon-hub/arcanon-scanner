@@ -21,11 +21,11 @@
 
 ### File Discovery
 
-- [ ] **DISC-01**: Scanner walks directories using ignore crate, respecting nested .gitignore files at every level
-- [ ] **DISC-02**: Scanner applies built-in excludes (.git/, node_modules/, __pycache__/, target/, dist/, build/, .next/, vendor/)
-- [ ] **DISC-03**: Scanner skips files exceeding 500KB, lines exceeding 10,000 chars, and binary files (null bytes in first 8KB)
-- [ ] **DISC-04**: Scanner applies additional exclude patterns from `.arcanon.toml` and `--exclude` flags
-- [ ] **DISC-05**: Scanner does not follow symlinks
+- [x] **DISC-01**: Scanner walks directories using ignore crate, respecting nested .gitignore files at every level
+- [x] **DISC-02**: Scanner applies built-in excludes (.git/, node_modules/, __pycache__/, target/, dist/, build/, .next/, vendor/)
+- [x] **DISC-03**: Scanner skips files exceeding 500KB, lines exceeding 10,000 chars, and binary files (null bytes in first 8KB)
+- [x] **DISC-04**: Scanner applies additional exclude patterns from `.arcanon.toml` and `--exclude` flags
+- [x] **DISC-05**: Scanner does not follow symlinks
 
 ### Git Context
 
@@ -175,11 +175,11 @@
 | BLDG-05 | Phase 1 | Pending |
 | BLDG-06 | Phase 1 | Pending |
 | BLDG-07 | Phase 1 | Pending |
-| DISC-01 | Phase 2 | Pending |
-| DISC-02 | Phase 2 | Pending |
-| DISC-03 | Phase 2 | Pending |
-| DISC-04 | Phase 2 | Pending |
-| DISC-05 | Phase 2 | Pending |
+| DISC-01 | Phase 2 | Complete |
+| DISC-02 | Phase 2 | Complete |
+| DISC-03 | Phase 2 | Complete |
+| DISC-04 | Phase 2 | Complete |
+| DISC-05 | Phase 2 | Complete |
 | GIT-01 | Phase 2 | Complete |
 | GIT-02 | Phase 2 | Complete |
 | GIT-03 | Phase 2 | Complete |
