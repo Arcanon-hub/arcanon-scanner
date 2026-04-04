@@ -7,7 +7,7 @@ use tree_sitter::Language;
 
 use crate::ast::AstHelper;
 use crate::plugin::{scope_to_service, ExtractionContext, LanguagePlugin};
-use crate::types::{Confidence, ConnectionInfo, EndpointInfo, ExtractionResult};
+use crate::types::{Confidence, EndpointInfo, ExtractionResult};
 
 /// C# language plugin.
 /// Covers .cs and .csproj files.

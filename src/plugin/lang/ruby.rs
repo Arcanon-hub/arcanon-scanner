@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::plugin::{scope_to_service, ExtractionContext, LanguagePlugin};
-use crate::types::{Confidence, ConnectionInfo, EndpointInfo, ExtractionResult};
+use crate::types::{Confidence, EndpointInfo, ExtractionResult};
 
 /// Ruby language plugin.
 /// Covers .rb and Gemfile.

@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::plugin::{scope_to_service, ExtractionContext, FileContext, LanguagePlugin};
-use crate::types::{Confidence, ConnectionInfo, EndpointInfo, ExtractionResult};
+use crate::types::{Confidence, EndpointInfo, ExtractionResult};
 
 /// Python language plugin.
 /// Covers .py, requirements.txt, and pyproject.toml.
