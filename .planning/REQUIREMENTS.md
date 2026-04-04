@@ -157,13 +157,86 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (Populated during roadmap creation) | | |
+| CLI-01 | Phase 1 | Pending |
+| CLI-02 | Phase 1 | Pending |
+| CLI-03 | Phase 1 | Pending |
+| CLI-04 | Phase 1 | Pending |
+| CLI-05 | Phase 1 | Pending |
+| CLI-06 | Phase 1 | Pending |
+| CLI-07 | Phase 1 | Pending |
+| CLI-08 | Phase 1 | Pending |
+| CLI-09 | Phase 1 | Pending |
+| CLI-10 | Phase 1 | Pending |
+| CLI-11 | Phase 1 | Pending |
+| BLDG-01 | Phase 1 | Pending |
+| BLDG-02 | Phase 1 | Pending |
+| BLDG-03 | Phase 1 | Pending |
+| BLDG-04 | Phase 1 | Pending |
+| BLDG-05 | Phase 1 | Pending |
+| BLDG-06 | Phase 1 | Pending |
+| BLDG-07 | Phase 1 | Pending |
+| DISC-01 | Phase 2 | Pending |
+| DISC-02 | Phase 2 | Pending |
+| DISC-03 | Phase 2 | Pending |
+| DISC-04 | Phase 2 | Pending |
+| DISC-05 | Phase 2 | Pending |
+| GIT-01 | Phase 2 | Pending |
+| GIT-02 | Phase 2 | Pending |
+| GIT-03 | Phase 2 | Pending |
+| GIT-04 | Phase 2 | Pending |
+| VARS-01 | Phase 2 | Pending |
+| VARS-02 | Phase 2 | Pending |
+| VARS-03 | Phase 2 | Pending |
+| VARS-04 | Phase 2 | Pending |
+| VARS-05 | Phase 2 | Pending |
+| CPLU-01 | Phase 3 | Pending |
+| CPLU-02 | Phase 3 | Pending |
+| CPLU-03 | Phase 3 | Pending |
+| CPLU-04 | Phase 3 | Pending |
+| CPLU-05 | Phase 3 | Pending |
+| CPLU-06 | Phase 3 | Pending |
+| CPLU-07 | Phase 3 | Pending |
+| CPLU-08 | Phase 3 | Pending |
+| PIPE-01 | Phase 3 | Pending |
+| PIPE-02 | Phase 3 | Pending |
+| PIPE-03 | Phase 3 | Pending |
+| PIPE-04 | Phase 3 | Pending |
+| PIPE-05 | Phase 3 | Pending |
+| UPLD-01 | Phase 3 | Pending |
+| UPLD-02 | Phase 3 | Pending |
+| UPLD-03 | Phase 3 | Pending |
+| UPLD-04 | Phase 3 | Pending |
+| FTOL-01 | Phase 3 | Pending |
+| FTOL-02 | Phase 3 | Pending |
+| FTOL-03 | Phase 3 | Pending |
+| FTOL-04 | Phase 3 | Pending |
+| DETQ-01 | Phase 3 | Pending |
+| DETQ-02 | Phase 3 | Pending |
+| DETQ-03 | Phase 3 | Pending |
+| DETQ-04 | Phase 3 | Pending |
+| MONO-04 | Phase 3 | Pending |
+| LPLU-01 | Phase 4 | Pending |
+| LPLU-02 | Phase 4 | Pending |
+| LPLU-03 | Phase 4 | Pending |
+| LPLU-04 | Phase 4 | Pending |
+| LPLU-05 | Phase 4 | Pending |
+| LPLU-06 | Phase 4 | Pending |
+| LPLU-07 | Phase 4 | Pending |
+| LPLU-08 | Phase 4 | Pending |
+| LPLU-09 | Phase 4 | Pending |
+| LPLU-10 | Phase 4 | Pending |
+| LPLU-11 | Phase 4 | Pending |
+| LPLU-12 | Phase 4 | Pending |
+| DETQ-05 | Phase 4 | Pending |
+| MONO-01 | Phase 4 | Pending |
+| MONO-02 | Phase 4 | Pending |
+| MONO-03 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 62 total
-- Mapped to phases: 0
-- Unmapped: 62
+- v1 requirements: 74 total
+- Mapped to phases: 74
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-04*
-*Last updated: 2026-04-04 after initial definition*
+*Last updated: 2026-04-04 after roadmap creation*
