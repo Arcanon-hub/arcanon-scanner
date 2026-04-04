@@ -194,6 +194,12 @@ impl LanguagePlugin for PythonPlugin {
                 .extend(extract_mq_clients(ctx, &source_files, &mut parser));
             result
                 .connections
+                .extend(extract_celery_connections(ctx, &source_files));
+            result
+                .connections
+                .extend(extract_nats_connections(ctx, &source_files));
+            result
+                .connections
                 .extend(extract_industrial_protocol_clients(
                     ctx,
                     &source_files,
@@ -347,7 +353,7 @@ fn extract_http_clients(
     parser: &mut Parser,
 ) -> Vec<ConnectionInfo> {
     let mut connections = Vec::new();
-    let http_libs = ["requests", "httpx", "aiohttp", "urllib"];
+    let http_libs = ["requests", "httpx", "urllib"];
     let http_methods = ["get", "post", "put", "delete", "patch"];
     let query = http_client_query();
 
@@ -357,7 +363,10 @@ fn extract_http_clients(
 
         // Skip if no HTTP library import
         if !http_libs.iter().any(|lib| content.contains(lib)) {
-            continue;
+            // Check for aiohttp separately (pattern is different)
+            if !content.contains("aiohttp") {
+                continue;
+            }
         }
 
         let tree = match parser.parse(source_bytes, None) {
@@ -416,6 +425,57 @@ fn extract_http_clients(
                 });
             }
         }
+
+        // Handle aiohttp.ClientSession separately (line-by-line scanning)
+        if content.contains("aiohttp") && content.contains("ClientSession") {
+            let lines: Vec<&str> = content.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                if line.contains("session.get(")
+                    || line.contains("session.post(")
+                    || line.contains("session.put(")
+                    || line.contains("session.delete(")
+                    || line.contains("session.patch(")
+                {
+                    // Extract URL from quoted string after session.<method>(
+                    let method_idx = line
+                        .find("session.get(")
+                        .map(|idx| ("get", idx))
+                        .or_else(|| line.find("session.post(").map(|idx| ("post", idx)))
+                        .or_else(|| line.find("session.put(").map(|idx| ("put", idx)))
+                        .or_else(|| line.find("session.delete(").map(|idx| ("delete", idx)))
+                        .or_else(|| line.find("session.patch(").map(|idx| ("patch", idx)));
+
+                    if let Some((method, idx)) = method_idx {
+                        let rest = &line[idx + method.len() + 9..]; // +9 for "session." + "("
+                        if let Some(quote_start) = rest.find('"').or_else(|| rest.find('\'')) {
+                            let quote_char = &rest[quote_start..quote_start + 1];
+                            if let Some(quote_end) = rest[quote_start + 1..].find(quote_char) {
+                                let url = &rest[quote_start + 1..quote_start + 1 + quote_end];
+                                let source_service =
+                                    scope_to_service(&file.path, &ctx.service_roots);
+                                if source_service.is_none() {
+                                    tracing::warn!("Unscoped Python file: {}", file.relative_path);
+                                }
+
+                                connections.push(ConnectionInfo {
+                                    source_service: source_service.unwrap_or("").to_string(),
+                                    target_name: url.to_string(),
+                                    protocol: "rest".to_string(),
+                                    method: Some(method.to_uppercase()),
+                                    path: None,
+                                    source_file: format!("{}:{}", file.relative_path, i + 1),
+                                    confidence: Confidence::Medium,
+                                    extraction_method: "python_aiohttp_client".to_string(),
+                                    evidence: Some(
+                                        url[..std::cmp::min(url.len(), 200)].to_string(),
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     connections
@@ -442,62 +502,120 @@ fn extract_db_clients(
             ("mongodb", "motor")
         } else if content.contains("redis") {
             ("redis", "redis")
+        } else if content.contains("sqlalchemy") || content.contains("create_engine") {
+            // Will handle separately below
+            ("", "")
         } else {
             continue;
         };
 
-        let tree = match parser.parse(source_bytes, None) {
-            Some(t) => t,
-            None => continue,
-        };
+        if !lib.is_empty() {
+            let tree = match parser.parse(source_bytes, None) {
+                Some(t) => t,
+                None => continue,
+            };
 
-        let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
+            let mut cursor = QueryCursor::new();
+            let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
 
-        while let Some(m) = matches.next() {
-            let mut lib_name = "";
-            let mut dsn = "";
+            while let Some(m) = matches.next() {
+                let mut lib_name = "";
+                let mut dsn = "";
 
-            for capture in m.captures {
-                let name = query.capture_names()[capture.index as usize];
-                let text = capture
-                    .node
-                    .utf8_text(source_bytes)
-                    .unwrap_or("")
-                    .trim_matches('"')
-                    .trim_matches('\'');
+                for capture in m.captures {
+                    let name = query.capture_names()[capture.index as usize];
+                    let text = capture
+                        .node
+                        .utf8_text(source_bytes)
+                        .unwrap_or("")
+                        .trim_matches('"')
+                        .trim_matches('\'');
 
-                match name {
-                    "lib" => lib_name = text,
-                    "dsn" => dsn = text,
-                    _ => {}
+                    match name {
+                        "lib" => lib_name = text,
+                        "dsn" => dsn = text,
+                        _ => {}
+                    }
+                }
+
+                if lib_name == lib && !dsn.is_empty() {
+                    let source_service = scope_to_service(&file.path, &ctx.service_roots);
+                    if source_service.is_none() {
+                        tracing::warn!("Unscoped Python file: {}", file.relative_path);
+                    }
+
+                    connections.push(ConnectionInfo {
+                        source_service: source_service.unwrap_or("").to_string(),
+                        target_name: dsn.to_string(),
+                        protocol: protocol.to_string(),
+                        method: None,
+                        path: None,
+                        source_file: format!(
+                            "{}:{}",
+                            file.relative_path,
+                            m.captures
+                                .first()
+                                .map(|c| c.node.start_position().row + 1)
+                                .unwrap_or(0)
+                        ),
+                        confidence: Confidence::High,
+                        extraction_method: "python_db_client".to_string(),
+                        evidence: Some(dsn[..std::cmp::min(dsn.len(), 200)].to_string()),
+                    });
                 }
             }
+        }
 
-            if lib_name == lib && !dsn.is_empty() {
-                let source_service = scope_to_service(&file.path, &ctx.service_roots);
-                if source_service.is_none() {
-                    tracing::warn!("Unscoped Python file: {}", file.relative_path);
+        // SQLAlchemy create_engine() detection (line-by-line)
+        if content.contains("sqlalchemy") && content.contains("create_engine") {
+            let lines: Vec<&str> = content.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                if line.contains("create_engine(") {
+                    // Extract DSN from quoted string
+                    if let Some(idx) = line.find("create_engine(") {
+                        let rest = &line[idx + 14..]; // +14 for "create_engine("
+                        if let Some(quote_start) = rest.find('"').or_else(|| rest.find('\'')) {
+                            let quote_char = &rest[quote_start..quote_start + 1];
+                            if let Some(quote_end) = rest[quote_start + 1..].find(quote_char) {
+                                let dsn = &rest[quote_start + 1..quote_start + 1 + quote_end];
+                                // Extract protocol from DSN (postgresql://, mysql://, sqlite:///)
+                                let protocol = if dsn.starts_with("postgresql://") {
+                                    "postgresql"
+                                } else if dsn.starts_with("mysql://") {
+                                    "mysql"
+                                } else if dsn.starts_with("sqlite:///") {
+                                    "sqlite"
+                                } else if dsn.starts_with("oracle://") {
+                                    "oracle"
+                                } else if dsn.starts_with("mssql://") {
+                                    "mssql"
+                                } else {
+                                    "sql"
+                                };
+
+                                let source_service =
+                                    scope_to_service(&file.path, &ctx.service_roots);
+                                if source_service.is_none() {
+                                    tracing::warn!("Unscoped Python file: {}", file.relative_path);
+                                }
+
+                                connections.push(ConnectionInfo {
+                                    source_service: source_service.unwrap_or("").to_string(),
+                                    target_name: dsn.to_string(),
+                                    protocol: protocol.to_string(),
+                                    method: None,
+                                    path: None,
+                                    source_file: format!("{}:{}", file.relative_path, i + 1),
+                                    confidence: Confidence::High,
+                                    extraction_method: "python_sqlalchemy_client".to_string(),
+                                    evidence: Some(
+                                        dsn[..std::cmp::min(dsn.len(), 200)].to_string(),
+                                    ),
+                                });
+                            }
+                        }
+                    }
                 }
-
-                connections.push(ConnectionInfo {
-                    source_service: source_service.unwrap_or("").to_string(),
-                    target_name: dsn.to_string(),
-                    protocol: protocol.to_string(),
-                    method: None,
-                    path: None,
-                    source_file: format!(
-                        "{}:{}",
-                        file.relative_path,
-                        m.captures
-                            .first()
-                            .map(|c| c.node.start_position().row + 1)
-                            .unwrap_or(0)
-                    ),
-                    confidence: Confidence::High,
-                    extraction_method: "python_db_client".to_string(),
-                    evidence: Some(dsn[..std::cmp::min(dsn.len(), 200)].to_string()),
-                });
             }
         }
     }
@@ -542,6 +660,194 @@ fn extract_mq_clients(
                                     extraction_method: "python_pika_client".to_string(),
                                     evidence: Some(line.to_string()),
                                 });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    connections
+}
+
+fn extract_celery_connections(
+    ctx: &ExtractionContext,
+    source_files: &[&FileContext],
+) -> Vec<ConnectionInfo> {
+    let mut connections = Vec::new();
+
+    for file in source_files {
+        let content = &*file.content;
+
+        // Celery: app = Celery(name, broker='url')
+        if content.contains("celery") || content.contains("Celery") {
+            if content.contains("Celery(") || content.contains("celery.Celery(") {
+                let source_service = scope_to_service(&file.path, &ctx.service_roots);
+                if source_service.is_none() {
+                    tracing::warn!("Unscoped Python file: {}", file.relative_path);
+                }
+
+                let lines: Vec<&str> = content.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if line.contains("Celery(") {
+                        // Extract broker URL from broker='url' or broker="url"
+                        if let Some(broker_idx) = line.find("broker=") {
+                            let rest = &line[broker_idx + 7..]; // +7 for "broker="
+                            if let Some(quote_start) = rest.find('"').or_else(|| rest.find('\'')) {
+                                let quote_char = &rest[quote_start..quote_start + 1];
+                                if let Some(quote_end) = rest[quote_start + 1..].find(quote_char) {
+                                    let broker_url =
+                                        &rest[quote_start + 1..quote_start + 1 + quote_end];
+                                    // Extract protocol from broker URL
+                                    let protocol = if broker_url.starts_with("redis://") {
+                                        "redis"
+                                    } else if broker_url.starts_with("amqp://")
+                                        || broker_url.starts_with("pyamqp://")
+                                    {
+                                        "amqp"
+                                    } else {
+                                        "broker"
+                                    };
+
+                                    connections.push(ConnectionInfo {
+                                        source_service: source_service.unwrap_or("").to_string(),
+                                        target_name: broker_url.to_string(),
+                                        protocol: protocol.to_string(),
+                                        method: None,
+                                        path: None,
+                                        source_file: format!("{}:{}", file.relative_path, i + 1),
+                                        confidence: Confidence::High,
+                                        extraction_method: "python_celery_broker".to_string(),
+                                        evidence: Some(
+                                            broker_url[..std::cmp::min(broker_url.len(), 200)]
+                                                .to_string(),
+                                        ),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Also detect app.send_task('task_name') calls
+            if content.contains("send_task(") {
+                let source_service = scope_to_service(&file.path, &ctx.service_roots);
+                let lines: Vec<&str> = content.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if line.contains("send_task(") {
+                        if let Some(idx) = line.find("send_task(") {
+                            let rest = &line[idx + 10..]; // +10 for "send_task("
+                            if let Some(quote_start) = rest.find('"').or_else(|| rest.find('\'')) {
+                                let quote_char = &rest[quote_start..quote_start + 1];
+                                if let Some(quote_end) = rest[quote_start + 1..].find(quote_char) {
+                                    let task_name =
+                                        &rest[quote_start + 1..quote_start + 1 + quote_end];
+                                    connections.push(ConnectionInfo {
+                                        source_service: source_service.unwrap_or("").to_string(),
+                                        target_name: "celery_task_queue".to_string(),
+                                        protocol: "celery".to_string(),
+                                        method: None,
+                                        path: Some(task_name.to_string()),
+                                        source_file: format!("{}:{}", file.relative_path, i + 1),
+                                        confidence: Confidence::High,
+                                        extraction_method: "python_celery_task".to_string(),
+                                        evidence: Some(task_name.to_string()),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    connections
+}
+
+fn extract_nats_connections(
+    ctx: &ExtractionContext,
+    source_files: &[&FileContext],
+) -> Vec<ConnectionInfo> {
+    let mut connections = Vec::new();
+
+    for file in source_files {
+        let content = &*file.content;
+
+        // NATS: import nats or from nats import
+        if !content.contains("nats") {
+            continue;
+        }
+
+        if content.contains("import nats") || content.contains("from nats") {
+            let source_service = scope_to_service(&file.path, &ctx.service_roots);
+            if source_service.is_none() {
+                tracing::warn!("Unscoped Python file: {}", file.relative_path);
+            }
+
+            // Detect nats.connect('url') calls
+            if content.contains("nats.connect(") {
+                let lines: Vec<&str> = content.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if line.contains("nats.connect(") {
+                        if let Some(idx) = line.find("nats.connect(") {
+                            let rest = &line[idx + 13..]; // +13 for "nats.connect("
+                            if let Some(quote_start) = rest.find('"').or_else(|| rest.find('\'')) {
+                                let quote_char = &rest[quote_start..quote_start + 1];
+                                if let Some(quote_end) = rest[quote_start + 1..].find(quote_char) {
+                                    let url = &rest[quote_start + 1..quote_start + 1 + quote_end];
+                                    connections.push(ConnectionInfo {
+                                        source_service: source_service.unwrap_or("").to_string(),
+                                        target_name: url.to_string(),
+                                        protocol: "nats".to_string(),
+                                        method: None,
+                                        path: None,
+                                        source_file: format!("{}:{}", file.relative_path, i + 1),
+                                        confidence: Confidence::High,
+                                        extraction_method: "python_nats_connect".to_string(),
+                                        evidence: Some(
+                                            url[..std::cmp::min(url.len(), 200)].to_string(),
+                                        ),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Detect publish/subscribe patterns
+            if content.contains("publish(") || content.contains("subscribe(") {
+                let lines: Vec<&str> = content.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if line.contains(".publish(") || line.contains(".subscribe(") {
+                        let (method, search_str) = if line.contains(".publish(") {
+                            ("publish", ".publish(")
+                        } else {
+                            ("subscribe", ".subscribe(")
+                        };
+
+                        if let Some(idx) = line.find(search_str) {
+                            let rest = &line[idx + search_str.len()..];
+                            if let Some(quote_start) = rest.find('"').or_else(|| rest.find('\'')) {
+                                let quote_char = &rest[quote_start..quote_start + 1];
+                                if let Some(quote_end) = rest[quote_start + 1..].find(quote_char) {
+                                    let subject =
+                                        &rest[quote_start + 1..quote_start + 1 + quote_end];
+                                    connections.push(ConnectionInfo {
+                                        source_service: source_service.unwrap_or("").to_string(),
+                                        target_name: "nats_broker".to_string(),
+                                        protocol: "nats".to_string(),
+                                        method: Some(method.to_uppercase()),
+                                        path: Some(subject.to_string()),
+                                        source_file: format!("{}:{}", file.relative_path, i + 1),
+                                        confidence: Confidence::High,
+                                        extraction_method: "python_nats_pubsub".to_string(),
+                                        evidence: Some(subject.to_string()),
+                                    });
+                                }
                             }
                         }
                     }
@@ -931,5 +1237,161 @@ mod tests {
         let result = plugin.extract(&ctx);
 
         assert!(result.connections.iter().any(|c| c.protocol == "grpc"));
+    }
+
+    #[test]
+    fn test_aiohttp_client_session_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "aiohttp==3.9.0\n"),
+            make_file_context(
+                "async_client.py",
+                "import aiohttp\nasync with aiohttp.ClientSession() as session:\n    async with session.get('http://api.example.com') as resp:\n        data = await resp.json()\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result
+            .connections
+            .iter()
+            .any(|c| c.protocol == "rest" && c.target_name.contains("api.example.com")));
+    }
+
+    #[test]
+    fn test_sqlalchemy_create_engine_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "sqlalchemy==2.0.0\n"),
+            make_file_context(
+                "db.py",
+                "from sqlalchemy import create_engine\nengine = create_engine('postgresql://user:pass@localhost/mydb')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result.connections.iter().any(|c| c.protocol == "postgresql"
+            && c.target_name.contains("postgresql://")
+            && c.extraction_method == "python_sqlalchemy_client"));
+    }
+
+    #[test]
+    fn test_celery_broker_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "celery==5.3.0\n"),
+            make_file_context(
+                "tasks.py",
+                "from celery import Celery\napp = Celery('myapp', broker='redis://localhost:6379/0')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result.connections.iter().any(|c| c.protocol == "redis"
+            && c.extraction_method == "python_celery_broker"
+            && c.target_name.contains("redis://")));
+    }
+
+    #[test]
+    fn test_celery_amqp_broker_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "celery==5.3.0\n"),
+            make_file_context(
+                "tasks.py",
+                "from celery import Celery\napp = Celery('myapp', broker='amqp://guest:guest@localhost//')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result
+            .connections
+            .iter()
+            .any(|c| c.protocol == "amqp" && c.extraction_method == "python_celery_broker"));
+    }
+
+    #[test]
+    fn test_celery_task_send_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "celery==5.3.0\n"),
+            make_file_context(
+                "tasks.py",
+                "from celery import Celery\napp = Celery('myapp')\napp.send_task('mytask.process_data')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result.connections.iter().any(|c| c.protocol == "celery"
+            && c.extraction_method == "python_celery_task"
+            && c.path
+                .as_ref()
+                .map(|p| p.contains("process_data"))
+                .unwrap_or(false)));
+    }
+
+    #[test]
+    fn test_nats_connect_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "nats-py==2.0.0\n"),
+            make_file_context(
+                "nats_client.py",
+                "import nats\nnc = await nats.connect('nats://localhost:4222')\nawait nc.subscribe('subject.name')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result.connections.iter().any(|c| c.protocol == "nats"
+            && c.extraction_method == "python_nats_connect"
+            && c.target_name.contains("nats://localhost:4222")));
+    }
+
+    #[test]
+    fn test_nats_pubsub_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "nats-py==2.0.0\n"),
+            make_file_context(
+                "nats_client.py",
+                "import nats\nnc = await nats.connect('nats://localhost:4222')\nawait nc.publish('events.user.created', b'data')\nawait nc.subscribe('events.user.deleted')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        let publish_found = result.connections.iter().any(|c| {
+            c.protocol == "nats"
+                && c.extraction_method == "python_nats_pubsub"
+                && c.method.as_ref().map(|m| m == "PUBLISH").unwrap_or(false)
+                && c.path
+                    .as_ref()
+                    .map(|p| p.contains("events.user.created"))
+                    .unwrap_or(false)
+        });
+
+        let subscribe_found = result.connections.iter().any(|c| {
+            c.protocol == "nats"
+                && c.extraction_method == "python_nats_pubsub"
+                && c.method.as_ref().map(|m| m == "SUBSCRIBE").unwrap_or(false)
+                && c.path
+                    .as_ref()
+                    .map(|p| p.contains("events.user.deleted"))
+                    .unwrap_or(false)
+        });
+
+        assert!(publish_found && subscribe_found);
     }
 }
