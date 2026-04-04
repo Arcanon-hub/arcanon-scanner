@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Cargo.toml with pinned dependencies and all source module stubs
-- [ ] 01-02-PLAN.md — All shared types, LanguagePlugin trait, AstParser wrapper, VariableStore stub
+- [x] 01-02-PLAN.md — All shared types, LanguagePlugin trait, AstParser wrapper, VariableStore stub
 - [ ] 01-03-PLAN.md — Full CLI entry point (clap Cli struct, tracing init, argument parsing tests)
 - [ ] 01-04-PLAN.md — Makefile targets and GitHub Actions CI workflow
 
