@@ -298,6 +298,21 @@ impl PatternRegistry {
 
             // Line-by-line scan
             for (line_number, line) in file.content.lines().enumerate() {
+                let trimmed = line.trim();
+
+                // Skip comments and string literals to avoid false positives
+                // on test data, documentation, and embedded code snippets
+                if trimmed.starts_with("//")
+                    || trimmed.starts_with('#')
+                    || trimmed.starts_with("///")
+                    || trimmed.starts_with("/*")
+                    || trimmed.starts_with('*')
+                    || (trimmed.starts_with('"') && trimmed.ends_with('"'))
+                    || (trimmed.starts_with("r#\"") || trimmed.starts_with("r\""))
+                {
+                    continue;
+                }
+
                 for detection in &pattern.detections {
                     if !line.contains(&detection.match_str) {
                         continue;
