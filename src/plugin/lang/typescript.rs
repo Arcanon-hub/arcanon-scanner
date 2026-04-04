@@ -37,7 +37,7 @@ const ROUTE_QUERY_EXPRESS: &str = r#"
 const FETCH_CALL_QUERY: &str = r#"
 (call_expression
   function: (identifier) @fn
-  arguments: (arguments (_) @url (_)*))
+  arguments: (arguments (_)* @url))
 "#;
 
 const GRPC_NEW_QUERY: &str = r#"
@@ -62,6 +62,22 @@ const KAFKA_SEND_QUERY: &str = r#"
   arguments: (arguments (object (pair key: (property_identifier) @key value: (string) @topic))))
 "#;
 
+// HTTP client method calls: axios.get('url'), got('url'), ky('url'), etc.
+const HTTP_CLIENT_METHOD_QUERY: &str = r#"
+(call_expression
+  function: (member_expression
+    object: (identifier) @obj
+    property: (property_identifier) @method)
+  arguments: (arguments (string) @url (_)*))
+"#;
+
+// Constructor calls: new Redis(), new PrismaClient(), new Sequelize(), new DataSource(), etc.
+const CONSTRUCTOR_CALL_QUERY: &str = r#"
+(new_expression
+  constructor: (identifier) @ctor
+  arguments: (arguments (_)*))
+"#;
+
 // OnceLock query caches for Express
 static EXPRESS_QUERY: OnceLock<Query> = OnceLock::new();
 
@@ -75,6 +91,8 @@ static FETCH_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static GRPC_NEW_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static MONGOOSE_CONNECT_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static KAFKA_SEND_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
+static HTTP_CLIENT_METHOD_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
+static CONSTRUCTOR_CALL_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 
 fn fetch_query(lang: &Language) -> &'static Query {
     FETCH_QUERY_CACHE.get_or_init(|| Query::new(lang, FETCH_CALL_QUERY).expect("valid fetch query"))
@@ -94,6 +112,18 @@ fn mongoose_connect_query(lang: &Language) -> &'static Query {
 fn kafka_send_query(lang: &Language) -> &'static Query {
     KAFKA_SEND_QUERY_CACHE
         .get_or_init(|| Query::new(lang, KAFKA_SEND_QUERY).expect("valid kafka send query"))
+}
+
+fn http_client_method_query(lang: &Language) -> &'static Query {
+    HTTP_CLIENT_METHOD_QUERY_CACHE.get_or_init(|| {
+        Query::new(lang, HTTP_CLIENT_METHOD_QUERY).expect("valid http client method query")
+    })
+}
+
+fn constructor_call_query(lang: &Language) -> &'static Query {
+    CONSTRUCTOR_CALL_QUERY_CACHE.get_or_init(|| {
+        Query::new(lang, CONSTRUCTOR_CALL_QUERY).expect("valid constructor call query")
+    })
 }
 
 /// Detect frameworks from package.json in the file list
@@ -341,7 +371,7 @@ fn extract_nestjs_routes(
     }
 }
 
-/// Extract HTTP client calls (fetch, axios, got, etc.)
+/// Extract HTTP client calls (fetch, axios, got, ky, superagent, etc.)
 fn extract_http_clients(
     result: &mut ExtractionResult,
     lang: &Language,
@@ -414,6 +444,269 @@ fn extract_http_clients(
                 evidence: Some(truncated_evidence),
             });
         }
+    }
+}
+
+/// Extract axios, got, ky, superagent HTTP client calls
+fn extract_http_client_libraries(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file: &crate::plugin::FileContext,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    let file_content = &*file.content;
+
+    // Content gates for each library
+    let has_axios = file_content.contains("axios");
+    let has_got = file_content.contains("got");
+    let has_ky = file_content.contains("ky");
+    let has_superagent = file_content.contains("superagent");
+
+    if !has_axios && !has_got && !has_ky && !has_superagent {
+        return;
+    }
+
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    let query = http_client_method_query(lang);
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(query, tree.root_node(), file_content.as_bytes());
+
+    let capture_names = query.capture_names();
+    let service_name = scope_to_service(&file.path, service_roots)
+        .unwrap_or("")
+        .to_string();
+
+    while let Some(m) = matches.next() {
+        let mut obj = String::new();
+        let mut method = String::new();
+        let mut url = String::new();
+        let mut line = 1;
+
+        for capture in m.captures {
+            let capture_name = capture_names[capture.index as usize];
+            let node = capture.node;
+            let text = node
+                .utf8_text(file_content.as_bytes())
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+
+            match capture_name {
+                "obj" => obj = text,
+                "method" => method = text,
+                "url" => url = text,
+                _ => {}
+            }
+
+            line = node.start_position().row + 1;
+        }
+
+        // Check if this is a known HTTP client library call
+        let (library, protocol) = match obj.as_str() {
+            "axios" if has_axios => ("axios", "rest"),
+            "got" if has_got => ("got", "rest"),
+            "ky" if has_ky => ("ky", "rest"),
+            "superagent" if has_superagent => ("superagent", "rest"),
+            _ => continue,
+        };
+
+        // Check for valid HTTP methods
+        let http_methods = ["get", "post", "put", "delete", "patch", "head", "options"];
+
+        if !http_methods.contains(&method.to_lowercase().as_str()) {
+            continue;
+        }
+
+        let evidence = format!("{}.{}('{}')", library, method, url);
+        let truncated_evidence = if evidence.len() > 200 {
+            evidence[..200].to_string()
+        } else {
+            evidence
+        };
+
+        result.connections.push(ConnectionInfo {
+            source_service: service_name.clone(),
+            target_name: url.clone(),
+            protocol: protocol.to_string(),
+            method: Some(method.to_uppercase()),
+            path: None,
+            source_file: format!("{}:{}", file.relative_path, line),
+            confidence: Confidence::High,
+            extraction_method: "ast_http_client_lib".to_string(),
+            evidence: Some(truncated_evidence),
+        });
+    }
+}
+
+/// Extract Fastify routes (when fastify framework is detected)
+fn extract_fastify_routes(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file: &crate::plugin::FileContext,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    let file_content = &*file.content;
+    if !file_content.contains("fastify") {
+        return;
+    }
+
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    let query = express_query(lang); // Fastify uses same pattern as Express
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(query, tree.root_node(), file_content.as_bytes());
+
+    let capture_names = query.capture_names();
+
+    while let Some(m) = matches.next() {
+        let mut receiver = String::new();
+        let mut method = String::new();
+        let mut path = String::new();
+        let mut handler = String::new();
+
+        for capture in m.captures {
+            let capture_name = capture_names[capture.index as usize];
+            let node = capture.node;
+            let text = node
+                .utf8_text(file_content.as_bytes())
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+
+            match capture_name {
+                "receiver" => receiver = text,
+                "method" => method = text,
+                "path" => path = text,
+                "handler" => handler = text,
+                _ => {}
+            }
+        }
+
+        // Fastify instances typically named: fastify, app, instance, server
+        let allowed_receivers = ["fastify", "app", "instance", "server", "f"];
+        let http_methods = [
+            "get", "post", "put", "delete", "patch", "head", "options", "all",
+        ];
+
+        if !allowed_receivers.contains(&receiver.as_str()) {
+            continue;
+        }
+        if !http_methods.contains(&method.to_lowercase().as_str()) {
+            continue;
+        }
+
+        let service_name = scope_to_service(&file.path, service_roots)
+            .unwrap_or("")
+            .to_string();
+
+        result.endpoints.push(EndpointInfo {
+            service_name,
+            method: method.to_uppercase(),
+            path,
+            handler: if handler.is_empty() {
+                None
+            } else {
+                Some(handler)
+            },
+            kind: "rest".to_string(),
+            confidence: Confidence::High,
+            extraction_method: "ast_fastify".to_string(),
+        });
+    }
+}
+
+/// Extract Next.js API routes from file paths and exported functions
+fn extract_nextjs_routes(
+    result: &mut ExtractionResult,
+    file: &crate::plugin::FileContext,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    let rel_path = &file.relative_path;
+    let file_content = &*file.content;
+
+    // Match Next.js 13+ app router: app/**/route.ts or app/**/route.js
+    let is_app_router = (rel_path.starts_with("app/") || rel_path.contains("/app/"))
+        && (rel_path.ends_with("/route.ts")
+            || rel_path.ends_with("/route.tsx")
+            || rel_path.ends_with("/route.js")
+            || rel_path.ends_with("/route.jsx"));
+
+    // Match Next.js 12 pages router: pages/api/**/*.ts
+    let is_pages_router = (rel_path.starts_with("pages/api/") || rel_path.contains("/pages/api/"))
+        && (rel_path.ends_with(".ts")
+            || rel_path.ends_with(".tsx")
+            || rel_path.ends_with(".js")
+            || rel_path.ends_with(".jsx"));
+
+    if !is_app_router && !is_pages_router {
+        return;
+    }
+
+    // Extract HTTP method from exported function names (case-insensitive)
+    let http_methods = vec!["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+    let lower_content = file_content.to_lowercase();
+
+    for method in http_methods {
+        let pattern = format!("export function {}", method.to_lowercase());
+        if !lower_content.contains(&pattern) {
+            continue;
+        }
+
+        // Derive path from file path
+        let path = if is_app_router {
+            // app/users/route.ts -> /users
+            let base = rel_path.strip_prefix("app/").unwrap_or(rel_path);
+            let base = base
+                .strip_suffix("/route.ts")
+                .or_else(|| base.strip_suffix("/route.tsx"))
+                .or_else(|| base.strip_suffix("/route.js"))
+                .or_else(|| base.strip_suffix("/route.jsx"))
+                .unwrap_or(base);
+            format!("/{}", base)
+        } else {
+            // pages/api/users/[id].ts -> /users/[id]
+            let base = rel_path.strip_prefix("pages/api/").unwrap_or(rel_path);
+            let base = base
+                .strip_suffix(".ts")
+                .or_else(|| base.strip_suffix(".tsx"))
+                .or_else(|| base.strip_suffix(".js"))
+                .or_else(|| base.strip_suffix(".jsx"))
+                .unwrap_or(base);
+            format!("/{}", base)
+        };
+
+        let service_name = scope_to_service(&file.path, service_roots)
+            .unwrap_or("")
+            .to_string();
+
+        result.endpoints.push(EndpointInfo {
+            service_name,
+            method: method.to_string(),
+            path,
+            handler: None,
+            kind: "rest".to_string(),
+            confidence: Confidence::High,
+            extraction_method: "nextjs_api_routes".to_string(),
+        });
     }
 }
 
@@ -490,15 +783,20 @@ fn extract_database_connections(
     }
 }
 
-/// Extract gRPC client instantiations
-fn extract_grpc_clients(
+/// Extract RabbitMQ/amqplib connections
+fn extract_amqplib_connections(
     result: &mut ExtractionResult,
     lang: &Language,
     file: &crate::plugin::FileContext,
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
     let file_content = &*file.content;
-    if !file_content.contains("_grpc") && !file_content.contains("_pb2_grpc") {
+
+    let has_amqplib = file_content.contains("amqplib") || file_content.contains("from 'amqplib'");
+    let has_channel =
+        file_content.contains("channel.publish") || file_content.contains("channel.sendToQueue");
+
+    if !has_amqplib && !has_channel {
         return;
     }
 
@@ -512,11 +810,327 @@ fn extract_grpc_clients(
         None => return,
     };
 
+    let query = http_client_method_query(lang);
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(query, tree.root_node(), file_content.as_bytes());
+
+    let capture_names = query.capture_names();
+    let service_name = scope_to_service(&file.path, service_roots)
+        .unwrap_or("")
+        .to_string();
+
+    while let Some(m) = matches.next() {
+        let mut obj = String::new();
+        let mut method = String::new();
+        let mut url = String::new();
+        let mut line = 1;
+
+        for capture in m.captures {
+            let capture_name = capture_names[capture.index as usize];
+            let node = capture.node;
+            let text = node
+                .utf8_text(file_content.as_bytes())
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+
+            match capture_name {
+                "obj" => obj = text,
+                "method" => method = text,
+                "url" => url = text,
+                _ => {}
+            }
+
+            line = node.start_position().row + 1;
+        }
+
+        if obj == "channel" && (method == "publish" || method == "sendToQueue") {
+            let evidence = format!("channel.{}('{}')", method, url);
+            let truncated_evidence = if evidence.len() > 200 {
+                evidence[..200].to_string()
+            } else {
+                evidence
+            };
+
+            result.connections.push(ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: url.clone(),
+                protocol: "amqp".to_string(),
+                method: Some(method),
+                path: None,
+                source_file: format!("{}:{}", file.relative_path, line),
+                confidence: Confidence::High,
+                extraction_method: "ast_amqplib".to_string(),
+                evidence: Some(truncated_evidence),
+            });
+        }
+    }
+}
+
+/// Extract Redis client instantiations
+fn extract_redis_clients(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file: &crate::plugin::FileContext,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    let file_content = &*file.content;
+
+    let has_ioredis = file_content.contains("ioredis") || file_content.contains("IORedis");
+    let has_redis = file_content.contains("redis") && file_content.contains("createClient");
+
+    if !has_ioredis && !has_redis {
+        return;
+    }
+
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    let service_name = scope_to_service(&file.path, service_roots)
+        .unwrap_or("")
+        .to_string();
+
+    // Match new Redis() or new IORedis()
+    if has_ioredis {
+        let query = constructor_call_query(lang);
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(query, tree.root_node(), file_content.as_bytes());
+
+        let capture_names = query.capture_names();
+
+        while let Some(m) = matches.next() {
+            let mut ctor = String::new();
+            let mut line = 1;
+
+            for capture in m.captures {
+                let capture_name = capture_names[capture.index as usize];
+                let node = capture.node;
+                let text = node
+                    .utf8_text(file_content.as_bytes())
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
+
+                if capture_name == "ctor" {
+                    ctor = text;
+                }
+
+                line = node.start_position().row + 1;
+            }
+
+            if ctor == "Redis" || ctor == "IORedis" {
+                let evidence = format!("new {}()", ctor);
+
+                result.connections.push(ConnectionInfo {
+                    source_service: service_name.clone(),
+                    target_name: "redis".to_string(),
+                    protocol: "redis".to_string(),
+                    method: None,
+                    path: None,
+                    source_file: format!("{}:{}", file.relative_path, line),
+                    confidence: Confidence::High,
+                    extraction_method: "ast_redis".to_string(),
+                    evidence: Some(evidence),
+                });
+            }
+        }
+    }
+
+    // Match createClient() - a regular function call, not new expression
+    if has_redis {
+        let fetch_query = fetch_query(lang);
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(fetch_query, tree.root_node(), file_content.as_bytes());
+        let capture_names = fetch_query.capture_names();
+
+        while let Some(m) = matches.next() {
+            let mut fn_name = String::new();
+            let mut line = 1;
+
+            for capture in m.captures {
+                let capture_name = capture_names[capture.index as usize];
+                let node = capture.node;
+                let text = node
+                    .utf8_text(file_content.as_bytes())
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
+
+                if capture_name == "fn" {
+                    fn_name = text;
+                }
+
+                line = node.start_position().row + 1;
+            }
+
+            if fn_name == "createClient" {
+                let evidence = "createClient()".to_string();
+
+                result.connections.push(ConnectionInfo {
+                    source_service: service_name.clone(),
+                    target_name: "redis".to_string(),
+                    protocol: "redis".to_string(),
+                    method: None,
+                    path: None,
+                    source_file: format!("{}:{}", file.relative_path, line),
+                    confidence: Confidence::High,
+                    extraction_method: "ast_redis".to_string(),
+                    evidence: Some(evidence),
+                });
+            }
+        }
+    }
+}
+
+/// Extract Prisma, TypeORM, and Sequelize ORM instantiations
+fn extract_orm_connections(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file: &crate::plugin::FileContext,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    let file_content = &*file.content;
+
+    let has_prisma = file_content.contains("PrismaClient");
+    let has_typeorm = file_content.contains("DataSource");
+    let has_sequelize = file_content.contains("Sequelize");
+
+    if !has_prisma && !has_typeorm && !has_sequelize {
+        return;
+    }
+
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    let query = constructor_call_query(lang);
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(query, tree.root_node(), file_content.as_bytes());
+
+    let capture_names = query.capture_names();
+    let service_name = scope_to_service(&file.path, service_roots)
+        .unwrap_or("")
+        .to_string();
+
+    while let Some(m) = matches.next() {
+        let mut ctor = String::new();
+        let mut line = 1;
+
+        for capture in m.captures {
+            let capture_name = capture_names[capture.index as usize];
+            let node = capture.node;
+            let text = node
+                .utf8_text(file_content.as_bytes())
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+
+            if capture_name == "ctor" {
+                ctor = text;
+            }
+
+            line = node.start_position().row + 1;
+        }
+
+        if ctor == "PrismaClient" && has_prisma {
+            let evidence = "new PrismaClient()".to_string();
+
+            result.connections.push(ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: "postgresql".to_string(),
+                protocol: "postgresql".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:{}", file.relative_path, line),
+                confidence: Confidence::Medium,
+                extraction_method: "ast_prisma".to_string(),
+                evidence: Some(evidence),
+            });
+        } else if ctor == "DataSource" && has_typeorm {
+            let evidence = "new DataSource({...})".to_string();
+
+            result.connections.push(ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: "database".to_string(),
+                protocol: "postgresql".to_string(), // Default to postgres, may be overridden by config
+                method: None,
+                path: None,
+                source_file: format!("{}:{}", file.relative_path, line),
+                confidence: Confidence::Medium,
+                extraction_method: "ast_typeorm".to_string(),
+                evidence: Some(evidence),
+            });
+        } else if ctor == "Sequelize" && has_sequelize {
+            let evidence = "new Sequelize(...)".to_string();
+
+            result.connections.push(ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: "database".to_string(),
+                protocol: "postgresql".to_string(), // May be mysql, postgres, sqlite, etc.
+                method: None,
+                path: None,
+                source_file: format!("{}:{}", file.relative_path, line),
+                confidence: Confidence::Medium,
+                extraction_method: "ast_sequelize".to_string(),
+                evidence: Some(evidence),
+            });
+        }
+    }
+}
+
+/// Extract gRPC client instantiations (including @grpc/grpc-js)
+fn extract_grpc_clients(
+    result: &mut ExtractionResult,
+    lang: &Language,
+    file: &crate::plugin::FileContext,
+    service_roots: &HashMap<std::path::PathBuf, String>,
+) {
+    let file_content = &*file.content;
+
+    let has_grpc_python_style =
+        file_content.contains("_grpc") || file_content.contains("_pb2_grpc");
+    let has_grpc_js = file_content.contains("@grpc/grpc-js") || file_content.contains("grpc");
+
+    if !has_grpc_python_style && !has_grpc_js {
+        return;
+    }
+
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return;
+    }
+
+    let tree = match parser.parse(file_content.as_bytes(), None) {
+        Some(t) => t,
+        None => return,
+    };
+
+    // Try gRPC new Client pattern
     let grpc_query = grpc_new_query(lang);
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(grpc_query, tree.root_node(), file_content.as_bytes());
 
     let capture_names = grpc_query.capture_names();
+    let service_name = scope_to_service(&file.path, service_roots)
+        .unwrap_or("")
+        .to_string();
 
     while let Some(m) = matches.next() {
         let mut ctor = String::new();
@@ -540,16 +1154,12 @@ fn extract_grpc_clients(
         }
 
         if ctor.ends_with("Client") {
-            let service_name = scope_to_service(&file.path, service_roots)
-                .unwrap_or("")
-                .to_string();
-
             let target = ctor.strip_suffix("Client").unwrap_or(&ctor).to_string();
 
             let evidence = format!("new {}(...)", ctor);
 
             result.connections.push(ConnectionInfo {
-                source_service: service_name,
+                source_service: service_name.clone(),
                 target_name: target,
                 protocol: "grpc".to_string(),
                 method: None,
@@ -559,6 +1169,69 @@ fn extract_grpc_clients(
                 extraction_method: "ast_grpc".to_string(),
                 evidence: Some(evidence),
             });
+        }
+    }
+
+    // Also detect grpc.credentials.createInsecure() pattern for @grpc/grpc-js
+    if has_grpc_js && file_content.contains("grpc.credentials") {
+        let member_query_str = r#"
+(call_expression
+  function: (member_expression
+    object: (member_expression
+      object: (identifier) @root
+      property: (property_identifier) @ns)
+    property: (property_identifier) @method)
+  arguments: (arguments (_)*))
+"#;
+
+        if let Ok(creds_query) = tree_sitter::Query::new(lang, member_query_str) {
+            let mut cursor = QueryCursor::new();
+            let mut matches =
+                cursor.matches(&creds_query, tree.root_node(), file_content.as_bytes());
+            let cap_names = creds_query.capture_names();
+
+            while let Some(m) = matches.next() {
+                let mut root = String::new();
+                let mut ns = String::new();
+                let mut method = String::new();
+                let mut line = 1;
+
+                for capture in m.captures {
+                    let cap_name = cap_names[capture.index as usize];
+                    let node = capture.node;
+                    let text = node
+                        .utf8_text(file_content.as_bytes())
+                        .unwrap_or("")
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .to_string();
+
+                    match cap_name {
+                        "root" => root = text,
+                        "ns" => ns = text,
+                        "method" => method = text,
+                        _ => {}
+                    }
+
+                    line = node.start_position().row + 1;
+                }
+
+                if root == "grpc" && ns == "credentials" && method == "createInsecure" {
+                    let evidence = "grpc.credentials.createInsecure()".to_string();
+
+                    result.connections.push(ConnectionInfo {
+                        source_service: service_name.clone(),
+                        target_name: "grpc_server".to_string(),
+                        protocol: "grpc".to_string(),
+                        method: None,
+                        path: None,
+                        source_file: format!("{}:{}", file.relative_path, line),
+                        confidence: Confidence::High,
+                        extraction_method: "ast_grpc_js".to_string(),
+                        evidence: Some(evidence),
+                    });
+                }
+            }
         }
     }
 }
@@ -694,16 +1367,34 @@ impl LanguagePlugin for TypeScriptPlugin {
                     extract_nestjs_routes(&mut result, &lang, file, &ctx.service_roots);
                 }
 
-                // Extract HTTP clients (fetch, axios, got, etc.)
-                extract_http_clients(&mut result, &lang, file, &ctx.service_roots);
+                // Extract Fastify routes if framework detected
+                if frameworks.fastify {
+                    extract_fastify_routes(&mut result, &lang, file, &ctx.service_roots);
+                }
 
-                // Extract database connections
+                // Extract HTTP clients (fetch, axios, got, ky, superagent, etc.)
+                extract_http_clients(&mut result, &lang, file, &ctx.service_roots);
+                extract_http_client_libraries(&mut result, &lang, file, &ctx.service_roots);
+
+                // Extract Next.js API routes
+                extract_nextjs_routes(&mut result, file, &ctx.service_roots);
+
+                // Extract database connections (mongoose)
                 extract_database_connections(&mut result, &lang, file, &ctx.service_roots);
+
+                // Extract ORM connections (Prisma, TypeORM, Sequelize)
+                extract_orm_connections(&mut result, &lang, file, &ctx.service_roots);
+
+                // Extract RabbitMQ/amqplib connections
+                extract_amqplib_connections(&mut result, &lang, file, &ctx.service_roots);
+
+                // Extract Redis clients
+                extract_redis_clients(&mut result, &lang, file, &ctx.service_roots);
 
                 // Extract gRPC clients
                 extract_grpc_clients(&mut result, &lang, file, &ctx.service_roots);
 
-                // Extract message queue calls
+                // Extract message queue calls (Kafka)
                 extract_mq_calls(&mut result, &lang, file, &ctx.service_roots);
             }
         }
@@ -897,5 +1588,410 @@ export class UsersController {
         // May or may not detect depending on tree-sitter query matching
         // This test just ensures no panic
         assert!(result.connections.len() >= 0);
+    }
+
+    #[test]
+    fn test_axios_http_client_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/client.ts"),
+            relative_path: "client.ts".to_string(),
+            content: Arc::from(
+                "import axios from 'axios'; axios.get('https://api.example.com/users');",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect axios.get call"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.extraction_method, "ast_http_client_lib");
+        assert!(
+            conn.evidence.as_ref().unwrap().contains("axios"),
+            "Evidence should contain 'axios'"
+        );
+    }
+
+    #[test]
+    fn test_got_http_client_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/client.ts"),
+            relative_path: "client.ts".to_string(),
+            content: Arc::from(
+                "import got from 'got'; got.post('https://api.example.com/submit');",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect got.post call"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.extraction_method, "ast_http_client_lib");
+    }
+
+    #[test]
+    fn test_ky_http_client_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/client.ts"),
+            relative_path: "client.ts".to_string(),
+            content: Arc::from("import ky from 'ky'; ky.put('https://api.example.com/update');"),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty(), "Should detect ky.put call");
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+    }
+
+    #[test]
+    fn test_superagent_http_client_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/client.ts"),
+            relative_path: "client.ts".to_string(),
+            content: Arc::from(
+                "import superagent from 'superagent'; superagent.delete('https://api.example.com/delete');",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect superagent.delete call"
+        );
+    }
+
+    #[test]
+    fn test_fastify_route_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let package_json = FileContext {
+            path: std::path::PathBuf::from("/repo/package.json"),
+            relative_path: "package.json".to_string(),
+            content: Arc::from(r#"{"dependencies": {"fastify": "^4.0"}}"#),
+        };
+
+        let server_file = FileContext {
+            path: std::path::PathBuf::from("/repo/server.ts"),
+            relative_path: "server.ts".to_string(),
+            content: Arc::from(
+                "const fastify = require('fastify')(); fastify.get('/items', handler);",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![package_json, server_file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.endpoints.is_empty(), "Should detect Fastify route");
+        let endpoint = &result.endpoints[0];
+        assert_eq!(endpoint.method, "GET");
+        assert_eq!(endpoint.path, "/items");
+        assert_eq!(endpoint.extraction_method, "ast_fastify");
+    }
+
+    #[test]
+    fn test_nextjs_app_route_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let route_file = FileContext {
+            path: std::path::PathBuf::from("/repo/app/api/users/route.ts"),
+            relative_path: "app/api/users/route.ts".to_string(),
+            content: Arc::from("export function GET() { return Response.json({}); }"),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![route_file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.endpoints.is_empty(),
+            "Should detect Next.js app route"
+        );
+        let endpoint = &result.endpoints[0];
+        assert_eq!(endpoint.method, "GET");
+        assert_eq!(endpoint.path, "/api/users");
+        assert_eq!(endpoint.extraction_method, "nextjs_api_routes");
+    }
+
+    #[test]
+    fn test_nextjs_pages_route_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let route_file = FileContext {
+            path: std::path::PathBuf::from("/repo/pages/api/auth/login.ts"),
+            relative_path: "pages/api/auth/login.ts".to_string(),
+            content: Arc::from("export function POST() { return {}; }"),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![route_file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.endpoints.is_empty(),
+            "Should detect Next.js pages route"
+        );
+        let endpoint = &result.endpoints[0];
+        assert_eq!(endpoint.method, "POST");
+        assert_eq!(endpoint.path, "/auth/login");
+    }
+
+    #[test]
+    fn test_amqplib_connection_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/mq.ts"),
+            relative_path: "mq.ts".to_string(),
+            content: Arc::from(
+                "import amqplib from 'amqplib'; channel.publish('exchange', 'routingKey', Buffer.from('message'));",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect amqplib channel.publish"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "amqp");
+        assert_eq!(conn.extraction_method, "ast_amqplib");
+    }
+
+    #[test]
+    fn test_redis_ioredis_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/cache.ts"),
+            relative_path: "cache.ts".to_string(),
+            content: Arc::from("import Redis from 'ioredis'; const redis = new Redis();"),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect Redis connection"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "redis");
+        assert_eq!(conn.extraction_method, "ast_redis");
+    }
+
+    #[test]
+    fn test_redis_createclient_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/cache.ts"),
+            relative_path: "cache.ts".to_string(),
+            content: Arc::from(
+                "import { createClient } from 'redis'; const client = createClient();",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect redis createClient"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "redis");
+    }
+
+    #[test]
+    fn test_prisma_orm_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/db.ts"),
+            relative_path: "db.ts".to_string(),
+            content: Arc::from(
+                "import { PrismaClient } from '@prisma/client'; const db = new PrismaClient();",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty(), "Should detect PrismaClient");
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "postgresql");
+        assert_eq!(conn.extraction_method, "ast_prisma");
+    }
+
+    #[test]
+    fn test_typeorm_orm_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/db.ts"),
+            relative_path: "db.ts".to_string(),
+            content: Arc::from(
+                "import { DataSource } from 'typeorm'; const db = new DataSource({ type: 'postgres', ...: {} });",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect TypeORM DataSource"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.extraction_method, "ast_typeorm");
+    }
+
+    #[test]
+    fn test_sequelize_orm_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/db.ts"),
+            relative_path: "db.ts".to_string(),
+            content: Arc::from(
+                "import { Sequelize } from 'sequelize'; const db = new Sequelize('postgres://user:pass@localhost/db');",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty(), "Should detect Sequelize");
+        let conn = &result.connections[0];
+        assert_eq!(conn.extraction_method, "ast_sequelize");
+    }
+
+    #[test]
+    fn test_grpc_js_credentials_detection() {
+        let plugin = TypeScriptPlugin;
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/grpc.ts"),
+            relative_path: "grpc.ts".to_string(),
+            content: Arc::from(
+                "import * as grpc from '@grpc/grpc-js'; const creds = grpc.credentials.createInsecure();",
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.connections.is_empty(),
+            "Should detect grpc.credentials.createInsecure"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "grpc");
+        assert_eq!(conn.extraction_method, "ast_grpc_js");
     }
 }
