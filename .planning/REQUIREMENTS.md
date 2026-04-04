@@ -86,9 +86,9 @@
 
 ### Monorepo Support
 
-- [ ] **MONO-01**: Scanner detects monorepos from multiple Dockerfiles, compose services, package manifests, or go.mod files
-- [ ] **MONO-02**: Scanner attributes source files to services using nearest-ancestor matching against service root map
-- [ ] **MONO-03**: Unscoped files (in shared libraries without service markers) are not attributed to any service
+- [x] **MONO-01**: Scanner detects monorepos from multiple Dockerfiles, compose services, package manifests, or go.mod files
+- [x] **MONO-02**: Scanner attributes source files to services using nearest-ancestor matching against service root map
+- [x] **MONO-03**: Unscoped files (in shared libraries without service markers) are not attributed to any service
 - [x] **MONO-04**: Service names and scoping can be overridden via `.arcanon.toml` [services] section
 
 ### Upload
@@ -228,9 +228,9 @@
 | LPLU-11 | Phase 4 | Pending |
 | LPLU-12 | Phase 4 | Pending |
 | DETQ-05 | Phase 4 | Pending |
-| MONO-01 | Phase 4 | Pending |
-| MONO-02 | Phase 4 | Pending |
-| MONO-03 | Phase 4 | Pending |
+| MONO-01 | Phase 4 | Complete |
+| MONO-02 | Phase 4 | Complete |
+| MONO-03 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 74 total
