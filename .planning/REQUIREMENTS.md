@@ -29,10 +29,10 @@
 
 ### Git Context
 
-- [ ] **GIT-01**: Scanner detects repo URL from first remote (origin preferred) using gix
-- [ ] **GIT-02**: Scanner detects branch from HEAD ref, falling back to CI env vars (GITHUB_REF_NAME, CI_COMMIT_BRANCH, BRANCH_NAME), then "detached"
-- [ ] **GIT-03**: Scanner detects commit SHA from HEAD, falling back to CI env vars, then deterministic content hash
-- [ ] **GIT-04**: Scanner derives repo_name from remote URL basename minus .git suffix, falling back to directory name
+- [x] **GIT-01**: Scanner detects repo URL from first remote (origin preferred) using gix
+- [x] **GIT-02**: Scanner detects branch from HEAD ref, falling back to CI env vars (GITHUB_REF_NAME, CI_COMMIT_BRANCH, BRANCH_NAME), then "detached"
+- [x] **GIT-03**: Scanner detects commit SHA from HEAD, falling back to CI env vars, then deterministic content hash
+- [x] **GIT-04**: Scanner derives repo_name from remote URL basename minus .git suffix, falling back to directory name
 
 ### Variable Resolution
 
@@ -180,10 +180,10 @@
 | DISC-03 | Phase 2 | Pending |
 | DISC-04 | Phase 2 | Pending |
 | DISC-05 | Phase 2 | Pending |
-| GIT-01 | Phase 2 | Pending |
-| GIT-02 | Phase 2 | Pending |
-| GIT-03 | Phase 2 | Pending |
-| GIT-04 | Phase 2 | Pending |
+| GIT-01 | Phase 2 | Complete |
+| GIT-02 | Phase 2 | Complete |
+| GIT-03 | Phase 2 | Complete |
+| GIT-04 | Phase 2 | Complete |
 | VARS-01 | Phase 2 | Pending |
 | VARS-02 | Phase 2 | Pending |
 | VARS-03 | Phase 2 | Pending |

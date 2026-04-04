@@ -50,7 +50,7 @@ Plans:
 
 Plans:
 - [ ] 02-01-PLAN.md — File discovery module: walk_repo() with built-in excludes, binary guard, line-length guard, symlink skip
-- [ ] 02-02-PLAN.md — Git context module: detect_git_context() with gix + full CI env-var fallback chain
+- [x] 02-02-PLAN.md — Git context module: detect_git_context() with gix + full CI env-var fallback chain
 - [ ] 02-03-PLAN.md — Variable resolution module: VariableStore from .env, docker-compose, k8s ConfigMap sources
 
 ### Phase 3: Pipeline and Config Plugins
