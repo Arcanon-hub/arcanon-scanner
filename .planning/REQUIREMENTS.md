@@ -115,6 +115,16 @@
 - [x] **BLDG-06**: GitHub Actions workflow builds release binary for x86_64-unknown-linux-musl
 - [x] **BLDG-07**: Release profile configured with LTO, single codegen unit, symbol stripping for < 15MB binary
 
+### Pattern Engine
+
+- [ ] **PTRN-01**: Scanner fetches patterns from remote endpoint (https://patterns.arcanon.dev/v1/patterns.json) at startup when hub-url is configured
+- [ ] **PTRN-02**: Scanner caches fetched patterns to ~/.arcanon/patterns.json with ETag/Last-Modified for conditional requests
+- [ ] **PTRN-03**: Scanner falls back to local cache when remote is unreachable, then to embedded defaults when no cache exists
+- [ ] **PTRN-04**: User can define custom patterns in .arcanon.toml [[patterns]] section that override remote patterns by ID
+- [ ] **PTRN-05**: Pattern engine applies import_gate (content check) + match (line scan) + target_extraction to produce ConnectionInfo findings
+- [ ] **PTRN-06**: Pattern findings merge with compiled plugin findings through the existing merger pipeline
+- [ ] **PTRN-07**: ScanPayloadV1 metadata includes pattern_version and pattern_source fields
+
 ## v2 Requirements
 
 ### Enhanced Analysis

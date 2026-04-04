@@ -96,11 +96,24 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 4/4 | Complete | 2026-04-04 |
 | 2. Infrastructure | 3/3 | Complete | 2026-04-04 |
-| 3. Pipeline and Config Plugins | 5/5 | Complete   | 2026-04-04 |
-| 4. Language Plugins and Hardening | 0/8 | Not started | - |
+| 3. Pipeline and Config Plugins | 5/5 | Complete | 2026-04-04 |
+| 4. Language Plugins and Hardening | 8/8 | Complete | 2026-04-04 |
+| 5. Pattern Engine | 0/TBD | Not started | - |
+
+### Phase 5: Pattern Engine
+**Goal**: Scanner fetches detection patterns from https://patterns.arcanon.dev/v1/patterns.json at startup, caches locally, merges with .arcanon.toml overrides, and applies them alongside compiled plugins — so new library detections never require a scanner release
+**Depends on**: Phase 4
+**Requirements**: PTRN-01, PTRN-02, PTRN-03, PTRN-04, PTRN-05, PTRN-06, PTRN-07
+**Success Criteria** (what must be TRUE):
+  1. Scanner with `--hub-url` configured fetches patterns from remote endpoint and caches to `~/.arcanon/patterns.json`
+  2. Scanner without network falls back to local cache, then embedded defaults
+  3. User-defined `[[patterns]]` in `.arcanon.toml` override remote patterns for the same ID
+  4. A pattern with `import_gate: ["boto3"]` and `match: "client('sqs')"` detects SQS connections in a Python file
+  5. Payload metadata includes `pattern_version` and `pattern_source` fields
+**Plans**: TBD
