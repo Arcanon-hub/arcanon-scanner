@@ -43,16 +43,16 @@ const RESOURCES_QUERY: &str = r#"
     (_)*))
 "#;
 
-// Faraday client detection query
-const FARADAY_QUERY: &str = r#"
+// Constant.method(url, ...) — used for Faraday AND HTTParty (same AST shape, different post-filter)
+const CONSTANT_CALL_QUERY: &str = r#"
 (call
   receiver: (constant) @lib
   method: (identifier) @method
   arguments: (argument_list (_) @url (_)*))
 "#;
 
-// Net::HTTP client detection query
-const NET_HTTP_QUERY: &str = r#"
+// Scope::Name.method(args) — used for Net::HTTP AND ActiveRecord::Base (same AST shape, different post-filter)
+const SCOPED_CALL_QUERY: &str = r#"
 (call
   receiver: (scope_resolution
     scope: (constant) @ns
@@ -61,40 +61,11 @@ const NET_HTTP_QUERY: &str = r#"
   arguments: (argument_list (_) @url (_)*))
 "#;
 
-// HTTParty client detection query
-const HTTPARTY_QUERY: &str = r#"
-(call
-  receiver: (constant) @lib
-  method: (identifier) @method
-  arguments: (argument_list (_) @url (_)*))
-"#;
-
-// Sidekiq/ActiveJob queue detection query
-const QUEUE_QUERY: &str = r#"
-(call
-  receiver: (constant) @worker
-  method: (identifier) @method
-  arguments: (argument_list (_)*))
-"#;
-
-// ActiveRecord connection query
-const ACTIVERECORD_QUERY: &str = r#"
-(call
-  receiver: (scope_resolution
-    scope: (constant) @scope
-    name: (constant) @lib)
-  method: (identifier) @method
-  arguments: (argument_list (_)*))
-"#;
-
 // OnceLock query caches
 static ROUTE_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static RESOURCES_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static FARADAY_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static NET_HTTP_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static HTTPARTY_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static QUEUE_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static ACTIVERECORD_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
+static CONSTANT_CALL_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
+static SCOPED_CALL_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 
 fn route_query(lang: &Language) -> &'static Query {
     ROUTE_QUERY_CACHE.get_or_init(|| Query::new(lang, ROUTE_QUERY).expect("valid route query"))
@@ -105,28 +76,16 @@ fn resources_query(lang: &Language) -> &'static Query {
         .get_or_init(|| Query::new(lang, RESOURCES_QUERY).expect("valid resources query"))
 }
 
-fn faraday_query(lang: &Language) -> &'static Query {
-    FARADAY_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, FARADAY_QUERY).expect("valid faraday query"))
+/// Unified query for Constant.method(url, ...) — post-filter by lib name (Faraday, HTTParty)
+fn constant_call_query(lang: &Language) -> &'static Query {
+    CONSTANT_CALL_QUERY_CACHE
+        .get_or_init(|| Query::new(lang, CONSTANT_CALL_QUERY).expect("valid constant call query"))
 }
 
-fn net_http_query(lang: &Language) -> &'static Query {
-    NET_HTTP_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, NET_HTTP_QUERY).expect("valid net_http query"))
-}
-
-fn httparty_query(lang: &Language) -> &'static Query {
-    HTTPARTY_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, HTTPARTY_QUERY).expect("valid httparty query"))
-}
-
-fn queue_query(lang: &Language) -> &'static Query {
-    QUEUE_QUERY_CACHE.get_or_init(|| Query::new(lang, QUEUE_QUERY).expect("valid queue query"))
-}
-
-fn activerecord_query(lang: &Language) -> &'static Query {
-    ACTIVERECORD_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, ACTIVERECORD_QUERY).expect("valid activerecord query"))
+/// Unified query for Scope::Name.method(args) — post-filter by scope/name (Net::HTTP, ActiveRecord::Base)
+fn scoped_call_query(lang: &Language) -> &'static Query {
+    SCOPED_CALL_QUERY_CACHE
+        .get_or_init(|| Query::new(lang, SCOPED_CALL_QUERY).expect("valid scoped call query"))
 }
 
 /// Detect Ruby frameworks from Gemfile in the file list
@@ -376,7 +335,7 @@ impl LanguagePlugin for RubyPlugin {
 
             // Detect Faraday clients
             if frameworks.faraday || source.contains("Faraday") {
-                let query = faraday_query(&lang);
+                let query = constant_call_query(&lang);
                 let mut cursor = QueryCursor::new();
                 let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
 
@@ -427,7 +386,7 @@ impl LanguagePlugin for RubyPlugin {
 
             // Detect Net::HTTP clients
             if source.contains("Net::HTTP") {
-                let query = net_http_query(&lang);
+                let query = scoped_call_query(&lang);
                 let mut cursor = QueryCursor::new();
                 let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
 
@@ -481,7 +440,7 @@ impl LanguagePlugin for RubyPlugin {
 
             // Detect HTTParty clients
             if frameworks.httparty || source.contains("HTTParty") {
-                let query = httparty_query(&lang);
+                let query = constant_call_query(&lang);
                 let mut cursor = QueryCursor::new();
                 let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
 
@@ -530,114 +489,69 @@ impl LanguagePlugin for RubyPlugin {
                 }
             }
 
-            // Detect Sidekiq/ActiveJob queue operations
+            // Detect Sidekiq/ActiveJob queue operations (line-based — avoids overly broad AST query)
             if frameworks.sidekiq
                 || frameworks.activejob
                 || source.contains("perform_async")
                 || source.contains("perform_later")
             {
-                let query = queue_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut worker = String::new();
-                    let mut method = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"')
-                            .trim_matches('\'');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "worker" => worker = text.to_string(),
-                            "method" => method = text.to_string(),
-                            _ => {}
+                for (i, line) in source.lines().enumerate() {
+                    let trimmed = line.trim();
+                    // Match patterns like: MyWorker.perform_async(args) or MyJob.perform_later(args)
+                    for method_name in &["perform_async", "perform_later"] {
+                        if let Some(pos) = trimmed.find(&format!(".{}", method_name)) {
+                            let worker = trimmed[..pos]
+                                .split_whitespace()
+                                .last()
+                                .unwrap_or("")
+                                .to_string();
+                            if !worker.is_empty()
+                                && worker.chars().next().is_some_and(|c| c.is_uppercase())
+                            {
+                                connections.push(ConnectionInfo {
+                                    source_service: source_service.unwrap_or("").to_string(),
+                                    target_name: worker,
+                                    protocol: "redis".to_string(),
+                                    method: None,
+                                    path: None,
+                                    source_file: format_source_file(&file.relative_path, i + 1),
+                                    confidence: Confidence::High,
+                                    extraction_method: "ast_queue_operation".to_string(),
+                                    evidence: Some(format_evidence(trimmed)),
+                                });
+                            }
                         }
-                    }
-
-                    if (method == "perform_async" || method == "perform_later")
-                        && !worker.is_empty()
-                    {
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: worker,
-                            protocol: "redis".to_string(),
-                            method: None,
-                            path: None,
-                            source_file: format_source_file(&file.relative_path, line),
-                            confidence: Confidence::High,
-                            extraction_method: "ast_queue_operation".to_string(),
-                            evidence: Some(evidence),
-                        });
                     }
                 }
             }
 
             // Detect ActiveRecord database connections
+            // Detect ActiveRecord database connections (line-based for reliable adapter extraction)
             if frameworks.activerecord || source.contains("ActiveRecord::Base.establish_connection")
             {
-                let query = activerecord_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut scope = String::new();
-                    let mut lib = String::new();
-                    let mut method = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"')
-                            .trim_matches('\'');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "scope" => scope = text.to_string(),
-                            "lib" => lib = text.to_string(),
-                            "method" => method = text.to_string(),
-                            _ => {}
-                        }
-                    }
-
-                    if scope == "ActiveRecord" && lib == "Base" && method == "establish_connection"
-                    {
-                        // Try to detect adapter from the evidence string
-                        let adapter = if evidence.contains("postgresql") {
-                            "postgresql".to_string()
-                        } else if evidence.contains("mysql2") {
-                            "mysql2".to_string()
-                        } else if evidence.contains("sqlite3") {
-                            "sqlite3".to_string()
+                for (i, line) in source.lines().enumerate() {
+                    if line.contains("establish_connection") && line.contains("ActiveRecord") {
+                        // Detect adapter from the source line itself, not from AST captures
+                        let adapter = if line.contains("postgresql") {
+                            "postgresql"
+                        } else if line.contains("mysql2") {
+                            "mysql2"
+                        } else if line.contains("sqlite3") {
+                            "sqlite3"
                         } else {
-                            "postgresql".to_string() // default assumption
+                            "postgresql" // default assumption for Rails
                         };
 
                         connections.push(ConnectionInfo {
                             source_service: source_service.unwrap_or("").to_string(),
                             target_name: String::new(),
-                            protocol: adapter,
+                            protocol: adapter.to_string(),
                             method: None,
                             path: None,
-                            source_file: format_source_file(&file.relative_path, line),
+                            source_file: format_source_file(&file.relative_path, i + 1),
                             confidence: Confidence::High,
                             extraction_method: "ast_activerecord_connection".to_string(),
-                            evidence: Some(evidence),
+                            evidence: Some(format_evidence(line.trim())),
                         });
                     }
                 }
