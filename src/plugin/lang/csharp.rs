@@ -395,8 +395,7 @@ fn extract_minimal_api_routes(
             continue;
         }
 
-        let lines = file.content.lines().enumerate();
-        for (_line_idx, line) in lines {
+        for line in file.content.lines() {
             // Look for patterns like: app.MapGet("/path", handler)
             for method in &map_methods {
                 if let Some(method_pos) = line.find(&format!(".{}", method)) {
