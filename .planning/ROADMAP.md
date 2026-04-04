@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Cargo.toml with pinned dependencies and all source module stubs
+- [x] 01-01-PLAN.md — Cargo.toml with pinned dependencies and all source module stubs
 - [ ] 01-02-PLAN.md — All shared types, LanguagePlugin trait, AstParser wrapper, VariableStore stub
 - [ ] 01-03-PLAN.md — Full CLI entry point (clap Cli struct, tracing init, argument parsing tests)
 - [ ] 01-04-PLAN.md — Makefile targets and GitHub Actions CI workflow
@@ -100,7 +100,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/4 | In progress | - |
+| 1. Foundation | 1/4 | In Progress|  |
 | 2. Infrastructure | 0/3 | Not started | - |
 | 3. Pipeline and Config Plugins | 0/5 | Not started | - |
 | 4. Language Plugins and Hardening | 0/8 | Not started | - |

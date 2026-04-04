@@ -113,7 +113,7 @@
 - [ ] **BLDG-04**: Makefile includes `build` target for debug and release builds
 - [ ] **BLDG-05**: GitHub Actions workflow runs lint, fmt, test on push/PR for Linux amd64
 - [ ] **BLDG-06**: GitHub Actions workflow builds release binary for x86_64-unknown-linux-musl
-- [ ] **BLDG-07**: Release profile configured with LTO, single codegen unit, symbol stripping for < 15MB binary
+- [x] **BLDG-07**: Release profile configured with LTO, single codegen unit, symbol stripping for < 15MB binary
 
 ## v2 Requirements
 
@@ -174,7 +174,7 @@
 | BLDG-04 | Phase 1 | Pending |
 | BLDG-05 | Phase 1 | Pending |
 | BLDG-06 | Phase 1 | Pending |
-| BLDG-07 | Phase 1 | Pending |
+| BLDG-07 | Phase 1 | Complete |
 | DISC-01 | Phase 2 | Pending |
 | DISC-02 | Phase 2 | Pending |
 | DISC-03 | Phase 2 | Pending |
