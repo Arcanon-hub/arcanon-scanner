@@ -2,7 +2,7 @@
 // Plugins are synchronous (rayon). Upload is async (tokio). See PITFALLS.md Pitfall 4.
 
 use std::sync::OnceLock;
-use tree_sitter::{Parser, Query, QueryCursor};
+use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::plugin::{scope_to_service, ExtractionContext, FileContext, LanguagePlugin};
 use crate::types::{Confidence, ConnectionInfo, EndpointInfo, ExtractionResult};
@@ -225,10 +225,6 @@ fn extract_fastapi_flask_routes(
         };
 
         let mut cursor = QueryCursor::new();
-        let matches = cursor.matches(query, tree.root_node(), source_bytes);
-
-        // Use the StreamingIterator pattern
-        use streaming_iterator::StreamingIterator;
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
         while let Some(m) = matches.next() {
             let mut obj_name = "";
@@ -298,7 +294,6 @@ fn extract_django_routes(
         };
 
         let mut cursor = QueryCursor::new();
-        use streaming_iterator::StreamingIterator;
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
 
         while let Some(m) = matches.next() {
@@ -371,7 +366,6 @@ fn extract_http_clients(
         };
 
         let mut cursor = QueryCursor::new();
-        use streaming_iterator::StreamingIterator;
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
 
         while let Some(m) = matches.next() {
@@ -458,7 +452,6 @@ fn extract_db_clients(
         };
 
         let mut cursor = QueryCursor::new();
-        use streaming_iterator::StreamingIterator;
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
 
         while let Some(m) = matches.next() {
@@ -587,7 +580,6 @@ fn extract_industrial_protocol_clients(
 
             let stub_query = grpc_stub_query();
             let mut cursor = QueryCursor::new();
-            use streaming_iterator::StreamingIterator;
             let mut matches = cursor.matches(stub_query, tree.root_node(), source_bytes);
 
             while let Some(m) = matches.next() {
@@ -739,7 +731,6 @@ fn extract_grpc_clients(
         };
 
         let mut cursor = QueryCursor::new();
-        use streaming_iterator::StreamingIterator;
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
 
         while let Some(m) = matches.next() {
