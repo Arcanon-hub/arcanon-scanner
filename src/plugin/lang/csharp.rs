@@ -102,10 +102,12 @@ fn extract_class_routes(files: &[&crate::plugin::FileContext]) -> HashMap<String
 (class_declaration
   (attribute_list
     (attribute
-      name: (identifier) @attr_name
-      (attribute_argument_clause
-        (attribute_argument (string_literal) @route_prefix))?))
-  name: (identifier) @class_name)
+      (identifier) @attr_name
+      (attribute_argument_list
+        (attribute_argument
+          (string_literal
+            (string_literal_content) @route_prefix)))))
+  (identifier) @class_name)
             "#,
         );
 
@@ -150,10 +152,12 @@ fn extract_method_routes(
 (method_declaration
   (attribute_list
     (attribute
-      name: (identifier) @http_attr
-      (attribute_argument_clause
-        (attribute_argument (string_literal) @method_path))?))
-  name: (identifier) @action_name)
+      (identifier) @http_attr
+      (attribute_argument_list
+        (attribute_argument
+          (string_literal
+            (string_literal_content) @method_path)))))
+  (identifier) @action_name)
             "#,
         );
 
@@ -238,10 +242,14 @@ fn extract_httpclient_calls(
             &file.content,
             r#"
 (invocation_expression
-  function: (member_access_expression
-    expression: (identifier) @obj
-    name: (identifier) @method)
-  arguments: (argument_list (_) @url (_)*))
+  (member_access_expression
+    (identifier) @obj
+    "."
+    (identifier) @method)
+  (argument_list
+    (argument
+      (string_literal
+        (string_literal_content) @url))))
             "#,
         );
 
@@ -308,10 +316,11 @@ fn extract_grpc_clients(
             &file.content,
             r#"
 (object_creation_expression
-  type: (qualified_name
-    qualifier: (identifier) @service
-    name: (identifier) @client_class)
-  arguments: (argument_list (_)+))
+  (qualified_name
+    (identifier) @service
+    "."
+    (identifier) @client_class)
+  (argument_list (_)+))
             "#,
         );
 
@@ -401,15 +410,14 @@ public class UsersController
         let plugin = CSharpPlugin;
         let result = plugin.extract(&ctx);
 
-        // Note: tree-sitter-c-sharp 0.23.1 attribute_list query may not match all grammar versions.
-        // Framework detection gate is verified by test_aspnetcore_skip_when_no_aspnetcore.
-        // Route extraction accuracy depends on grammar node type compatibility.
-        if !result.endpoints.is_empty() {
-            let endpoint = &result.endpoints[0];
-            assert_eq!(endpoint.method, "GET");
-            assert!(endpoint.path.contains("users"));
-            assert_eq!(endpoint.kind, "rest");
-        }
+        assert!(
+            !result.endpoints.is_empty(),
+            "Expected to find HttpGet endpoint"
+        );
+        let endpoint = &result.endpoints[0];
+        assert_eq!(endpoint.method, "GET");
+        assert!(endpoint.path.contains("users") || endpoint.path.contains("{id}"));
+        assert_eq!(endpoint.kind, "rest");
     }
 
     #[test]
@@ -432,12 +440,13 @@ public class ProductsController
         let plugin = CSharpPlugin;
         let result = plugin.extract(&ctx);
 
-        // Grammar compatibility note: see test_aspnetcore_route_with_controller_token
-        if !result.endpoints.is_empty() {
-            let endpoint = &result.endpoints[0];
-            assert_eq!(endpoint.method, "GET");
-            assert!(endpoint.path.contains("products"));
-        }
+        assert!(
+            !result.endpoints.is_empty(),
+            "Expected to find HttpGet endpoint"
+        );
+        let endpoint = &result.endpoints[0];
+        assert_eq!(endpoint.method, "GET");
+        assert!(endpoint.path.contains("products"));
     }
 
     #[test]

@@ -20,6 +20,7 @@ struct FrameworkSet {
     actix: bool,
     axum: bool,
     rocket: bool,
+    reqwest: bool,
     tonic: bool,
     tokio_modbus: bool,
 }
@@ -29,7 +30,9 @@ const ACTIX_ROUTE_QUERY: &str = r#"
 (attribute_item
   (attribute
     (identifier) @macro_name
-    arguments: (token_tree (string_literal) @path)))
+    (token_tree
+      (string_literal
+        (string_content) @path))))
 "#;
 
 // Axum Router::new().route() detection query
@@ -46,15 +49,12 @@ const AXUM_ROUTE_QUERY: &str = r#"
 // reqwest client detection query
 const REQWEST_CLIENT_QUERY: &str = r#"
 (call_expression
-  function: [
-    (scoped_identifier
-      path: (identifier) @crate
-      name: (identifier) @method)
-    (field_expression
-      value: (_) @client
-      field: (field_identifier) @method)
-  ]
-  arguments: (arguments (_) @url (_)*))
+  (scoped_identifier
+    (identifier) @crate
+    (identifier) @method)
+  (arguments
+    (string_literal
+      (string_content) @url)))
 "#;
 
 // tonic gRPC client detection query
@@ -119,6 +119,9 @@ fn detect_frameworks(ctx: &ExtractionContext) -> FrameworkSet {
             }
             if content.contains("rocket") {
                 frameworks.rocket = true;
+            }
+            if content.contains("reqwest") {
+                frameworks.reqwest = true;
             }
             if content.contains("tonic") {
                 frameworks.tonic = true;
@@ -198,6 +201,7 @@ impl LanguagePlugin for RustLangPlugin {
         if !frameworks.actix
             && !frameworks.axum
             && !frameworks.rocket
+            && !frameworks.reqwest
             && !frameworks.tonic
             && !frameworks.tokio_modbus
         {
@@ -575,13 +579,13 @@ reqwest = "0.11""#,
         let ctx = create_context(files);
         let result = plugin.extract(&ctx);
 
-        // Note: tree-sitter-rust 0.24.2 query compatibility may vary.
-        // reqwest detection depends on call_expression matching in the grammar.
-        if !result.connections.is_empty() {
-            let conn = &result.connections[0];
-            assert_eq!(conn.protocol, "rest");
-            assert_eq!(conn.extraction_method, "ast_reqwest_client");
-        }
+        assert!(
+            !result.connections.is_empty(),
+            "Expected reqwest connection"
+        );
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.extraction_method, "ast_reqwest_client");
     }
 
     #[test]
