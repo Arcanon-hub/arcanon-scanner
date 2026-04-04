@@ -871,7 +871,7 @@ export class UsersController {
         assert!(!result.endpoints.is_empty(), "Should detect NestJS route");
         let endpoint = &result.endpoints[0];
         assert_eq!(endpoint.method, "GET");
-        assert_eq!(endpoint.extraction_method, "ast_nestjs");
+        assert_eq!(endpoint.extraction_method, "ast_nestjs_two_phase");
     }
 
     #[test]
