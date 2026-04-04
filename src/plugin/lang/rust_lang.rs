@@ -46,41 +46,9 @@ const AXUM_ROUTE_QUERY: &str = r#"
     (_) @handler))
 "#;
 
-// reqwest client detection query
-const REQWEST_CLIENT_QUERY: &str = r#"
-(call_expression
-  (scoped_identifier
-    (identifier) @crate
-    (identifier) @method)
-  (arguments
-    (string_literal
-      (string_content) @url)))
-"#;
-
-// tonic gRPC client detection query
-const TONIC_CLIENT_QUERY: &str = r#"
-(call_expression
-  function: (scoped_identifier
-    path: (identifier) @service_name
-    name: (identifier) @method)
-  arguments: (arguments (_) @url (_)*))
-"#;
-
-// tokio-modbus connection query
-const TOKIO_MODBUS_QUERY: &str = r#"
-(call_expression
-  function: (scoped_identifier
-    path: (identifier) @modbus_pkg
-    name: (identifier) @method)
-  arguments: (arguments (_) @addr (_)*))
-"#;
-
 // OnceLock query caches
 static ACTIX_QUERY: OnceLock<Query> = OnceLock::new();
 static AXUM_QUERY: OnceLock<Query> = OnceLock::new();
-static REQWEST_QUERY: OnceLock<Query> = OnceLock::new();
-static TONIC_QUERY: OnceLock<Query> = OnceLock::new();
-static TOKIO_MODBUS_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 
 fn actix_query(lang: &Language) -> &'static Query {
     ACTIX_QUERY.get_or_init(|| Query::new(lang, ACTIX_ROUTE_QUERY).expect("valid actix query"))
@@ -88,20 +56,6 @@ fn actix_query(lang: &Language) -> &'static Query {
 
 fn axum_query(lang: &Language) -> &'static Query {
     AXUM_QUERY.get_or_init(|| Query::new(lang, AXUM_ROUTE_QUERY).expect("valid axum query"))
-}
-
-fn reqwest_query(lang: &Language) -> &'static Query {
-    REQWEST_QUERY
-        .get_or_init(|| Query::new(lang, REQWEST_CLIENT_QUERY).expect("valid reqwest query"))
-}
-
-fn tonic_query(lang: &Language) -> &'static Query {
-    TONIC_QUERY.get_or_init(|| Query::new(lang, TONIC_CLIENT_QUERY).expect("valid tonic query"))
-}
-
-fn tokio_modbus_query(lang: &Language) -> &'static Query {
-    TOKIO_MODBUS_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, TOKIO_MODBUS_QUERY).expect("valid tokio-modbus query"))
 }
 
 /// Detect Rust frameworks from Cargo.toml in the file list
@@ -171,20 +125,6 @@ fn axum_handler_to_method(handler: &str) -> String {
     }
 }
 
-/// Format evidence string, capping at 200 chars
-fn format_evidence(text: &str) -> String {
-    if text.len() > 200 {
-        format!("{}...", &text[..197])
-    } else {
-        text.to_string()
-    }
-}
-
-/// Extract source_file location as "relative_path:line"
-fn format_source_file(relative_path: &str, line: usize) -> String {
-    format!("{}:{}", relative_path, line)
-}
-
 impl LanguagePlugin for RustLangPlugin {
     fn name(&self) -> &str {
         "rust"
@@ -213,7 +153,6 @@ impl LanguagePlugin for RustLangPlugin {
         let _ = parser.set_language(&lang);
 
         let mut endpoints = Vec::new();
-        let mut connections = Vec::new();
 
         // Process .rs files only (not Cargo.toml)
         for file in &ctx.files {
@@ -316,161 +255,12 @@ impl LanguagePlugin for RustLangPlugin {
                     }
                 }
             }
-
-            // Detect reqwest clients (gate on frameworks.reqwest)
-            if frameworks.reqwest {
-                let query = reqwest_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut crate_name = String::new();
-                    let mut method = String::new();
-                    let mut url = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "crate" => crate_name = text.to_string(),
-                            "method" => method = text.to_string(),
-                            "url" => url = text.to_string(),
-                            _ => {}
-                        }
-                    }
-
-                    if crate_name == "reqwest"
-                        || method.to_lowercase().as_str().contains("get")
-                        || method.to_lowercase().as_str().contains("post")
-                        || method.to_lowercase().as_str().contains("put")
-                    {
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: String::new(),
-                            protocol: "rest".to_string(),
-                            method: Some(method),
-                            path: Some(url),
-                            source_file: format_source_file(&file.relative_path, line),
-                            confidence: Confidence::High,
-                            extraction_method: "ast_reqwest_client".to_string(),
-                            evidence: Some(evidence),
-                        });
-                    }
-                }
-            }
-
-            // Detect tonic gRPC clients (gate on tonic in Cargo.toml)
-            if frameworks.tonic {
-                let query = tonic_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut service_name = String::new();
-                    let mut method = String::new();
-                    let mut url = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "service_name" => service_name = text.to_string(),
-                            "method" => method = text.to_string(),
-                            "url" => url = text.to_string(),
-                            _ => {}
-                        }
-                    }
-
-                    // Filter for gRPC patterns like "ServiceClient::connect"
-                    if method.to_lowercase().contains("connect")
-                        && service_name.to_lowercase().contains("client")
-                    {
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: service_name.clone(),
-                            protocol: "grpc".to_string(),
-                            method: Some(method),
-                            path: Some(url),
-                            source_file: format_source_file(&file.relative_path, line),
-                            confidence: Confidence::High,
-                            extraction_method: "ast_tonic_client".to_string(),
-                            evidence: Some(evidence),
-                        });
-                    }
-                }
-            }
-
-            // Detect tokio-modbus industrial protocol (gate on tokio-modbus in Cargo.toml and file content)
-            if frameworks.tokio_modbus && source.contains("tokio_modbus") {
-                let query = tokio_modbus_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut modbus_pkg = String::new();
-                    let mut method = String::new();
-                    let mut addr = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "modbus_pkg" => modbus_pkg = text.to_string(),
-                            "method" => method = text.to_string(),
-                            "addr" => addr = text.to_string(),
-                            _ => {}
-                        }
-                    }
-
-                    // Filter for tcp::connect or rtu::connect patterns
-                    if (modbus_pkg == "tcp" || modbus_pkg == "rtu") && method == "connect" {
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: format!("{}_{}", modbus_pkg, "device"),
-                            protocol: "modbus".to_string(),
-                            method: Some(method),
-                            path: Some(addr),
-                            source_file: format_source_file(&file.relative_path, line),
-                            confidence: Confidence::High,
-                            extraction_method: "ast_tokio_modbus".to_string(),
-                            evidence: Some(evidence),
-                        });
-                    }
-                }
-            }
         }
 
         ExtractionResult {
             services: Vec::new(),
             endpoints,
-            connections,
+            connections: Vec::new(),
             schemas: Vec::new(),
             actors: Vec::new(),
         }
@@ -560,79 +350,5 @@ axum = "0.7""#,
         assert_eq!(ep.extraction_method, "ast_axum_route");
     }
 
-    #[test]
-    fn test_reqwest_client_detection() {
-        let plugin = RustLangPlugin;
 
-        let files = vec![
-            (
-                "/repo/Cargo.toml",
-                "Cargo.toml",
-                r#"[dependencies]
-reqwest = "0.11""#,
-            ),
-            (
-                "/repo/src/main.rs",
-                "src/main.rs",
-                r#"reqwest::get("http://svc/api").await"#,
-            ),
-        ];
-
-        let ctx = create_context(files);
-        let result = plugin.extract(&ctx);
-
-        assert!(
-            !result.connections.is_empty(),
-            "Expected reqwest connection"
-        );
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "rest");
-        assert_eq!(conn.extraction_method, "ast_reqwest_client");
-    }
-
-    #[test]
-    fn test_tokio_modbus_detection() {
-        let plugin = RustLangPlugin;
-
-        let files = vec![
-            (
-                "/repo/Cargo.toml",
-                "Cargo.toml",
-                r#"[dependencies]
-tokio-modbus = "0.1""#,
-            ),
-            (
-                "/repo/src/main.rs",
-                "src/main.rs",
-                r#"use tokio_modbus::prelude::*;
-tcp::connect(addr).await"#,
-            ),
-        ];
-
-        let ctx = create_context(files);
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "modbus");
-        assert_eq!(conn.confidence, Confidence::High);
-        assert_eq!(conn.extraction_method, "ast_tokio_modbus");
-    }
-
-    #[test]
-    fn test_source_file_format() {
-        assert_eq!(format_source_file("src/main.rs", 42), "src/main.rs:42");
-    }
-
-    #[test]
-    fn test_evidence_capping() {
-        let long_text = "a".repeat(300);
-        let capped = format_evidence(&long_text);
-        assert!(capped.len() <= 200);
-        assert!(capped.ends_with("..."));
-
-        let short_text = "short";
-        let result = format_evidence(short_text);
-        assert_eq!(result, "short");
-    }
 }

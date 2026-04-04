@@ -44,28 +44,9 @@ const RESOURCES_QUERY: &str = r#"
 "#;
 
 // Constant.method(url, ...) — used for Faraday AND HTTParty (same AST shape, different post-filter)
-const CONSTANT_CALL_QUERY: &str = r#"
-(call
-  receiver: (constant) @lib
-  method: (identifier) @method
-  arguments: (argument_list (_) @url (_)*))
-"#;
-
-// Scope::Name.method(args) — used for Net::HTTP AND ActiveRecord::Base (same AST shape, different post-filter)
-const SCOPED_CALL_QUERY: &str = r#"
-(call
-  receiver: (scope_resolution
-    scope: (constant) @ns
-    name: (constant) @lib)
-  method: (identifier) @method
-  arguments: (argument_list (_) @url (_)*))
-"#;
-
 // OnceLock query caches
 static ROUTE_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static RESOURCES_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static CONSTANT_CALL_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static SCOPED_CALL_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 
 fn route_query(lang: &Language) -> &'static Query {
     ROUTE_QUERY_CACHE.get_or_init(|| Query::new(lang, ROUTE_QUERY).expect("valid route query"))
@@ -74,18 +55,6 @@ fn route_query(lang: &Language) -> &'static Query {
 fn resources_query(lang: &Language) -> &'static Query {
     RESOURCES_QUERY_CACHE
         .get_or_init(|| Query::new(lang, RESOURCES_QUERY).expect("valid resources query"))
-}
-
-/// Unified query for Constant.method(url, ...) — post-filter by lib name (Faraday, HTTParty)
-fn constant_call_query(lang: &Language) -> &'static Query {
-    CONSTANT_CALL_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, CONSTANT_CALL_QUERY).expect("valid constant call query"))
-}
-
-/// Unified query for Scope::Name.method(args) — post-filter by scope/name (Net::HTTP, ActiveRecord::Base)
-fn scoped_call_query(lang: &Language) -> &'static Query {
-    SCOPED_CALL_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, SCOPED_CALL_QUERY).expect("valid scoped call query"))
 }
 
 /// Detect Ruby frameworks from Gemfile in the file list
@@ -181,19 +150,6 @@ fn expand_resource(resource_name: &str, confidence: Confidence) -> Vec<EndpointI
 }
 
 /// Format evidence string, capping at 200 chars
-fn format_evidence(text: &str) -> String {
-    if text.len() > 200 {
-        format!("{}...", &text[..197])
-    } else {
-        text.to_string()
-    }
-}
-
-/// Extract source_file location as "relative_path:line"
-fn format_source_file(relative_path: &str, line: usize) -> String {
-    format!("{}:{}", relative_path, line)
-}
-
 impl LanguagePlugin for RubyPlugin {
     fn name(&self) -> &str {
         "ruby"
@@ -223,7 +179,6 @@ impl LanguagePlugin for RubyPlugin {
         let _ = parser.set_language(&lang);
 
         let mut endpoints = Vec::new();
-        let mut connections = Vec::new();
 
         // Process .rb files only (not Gemfile)
         for file in &ctx.files {
@@ -332,236 +287,12 @@ impl LanguagePlugin for RubyPlugin {
                     }
                 }
             }
-
-            // Detect Faraday clients
-            if frameworks.faraday || source.contains("Faraday") {
-                let query = constant_call_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut lib = String::new();
-                    let mut method = String::new();
-                    let mut url = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"')
-                            .trim_matches('\'');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "lib" => lib = text.to_string(),
-                            "method" => method = text.to_string(),
-                            "url" => url = text.to_string(),
-                            _ => {}
-                        }
-                    }
-
-                    if lib == "Faraday"
-                        && ["get", "post", "put", "delete", "patch"]
-                            .contains(&method.to_lowercase().as_str())
-                    {
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: String::new(),
-                            protocol: "rest".to_string(),
-                            method: Some(method),
-                            path: Some(url),
-                            source_file: format_source_file(&file.relative_path, line),
-                            confidence: Confidence::High,
-                            extraction_method: "ast_faraday_client".to_string(),
-                            evidence: Some(evidence),
-                        });
-                    }
-                }
-            }
-
-            // Detect Net::HTTP clients
-            if source.contains("Net::HTTP") {
-                let query = scoped_call_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut ns = String::new();
-                    let mut lib = String::new();
-                    let mut method = String::new();
-                    let mut url = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"')
-                            .trim_matches('\'');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "ns" => ns = text.to_string(),
-                            "lib" => lib = text.to_string(),
-                            "method" => method = text.to_string(),
-                            "url" => url = text.to_string(),
-                            _ => {}
-                        }
-                    }
-
-                    if ns == "Net"
-                        && lib == "HTTP"
-                        && ["get", "post", "put", "delete", "patch"]
-                            .contains(&method.to_lowercase().as_str())
-                    {
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: String::new(),
-                            protocol: "rest".to_string(),
-                            method: Some(method),
-                            path: Some(url),
-                            source_file: format_source_file(&file.relative_path, line),
-                            confidence: Confidence::Medium,
-                            extraction_method: "ast_net_http_client".to_string(),
-                            evidence: Some(evidence),
-                        });
-                    }
-                }
-            }
-
-            // Detect HTTParty clients
-            if frameworks.httparty || source.contains("HTTParty") {
-                let query = constant_call_query(&lang);
-                let mut cursor = QueryCursor::new();
-                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
-
-                while let Some(m) = matches.next() {
-                    let mut lib = String::new();
-                    let mut method = String::new();
-                    let mut url = String::new();
-                    let mut line = 0;
-                    let mut evidence = String::new();
-
-                    for capture in m.captures {
-                        let cap_name = query.capture_names()[capture.index as usize];
-                        let text = capture
-                            .node
-                            .utf8_text(file_bytes)
-                            .unwrap_or("")
-                            .trim_matches('"')
-                            .trim_matches('\'');
-                        line = capture.node.start_position().row + 1;
-                        evidence = format_evidence(text);
-
-                        match cap_name {
-                            "lib" => lib = text.to_string(),
-                            "method" => method = text.to_string(),
-                            "url" => url = text.to_string(),
-                            _ => {}
-                        }
-                    }
-
-                    if lib == "HTTParty"
-                        && ["get", "post", "put", "delete", "patch"]
-                            .contains(&method.to_lowercase().as_str())
-                    {
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: String::new(),
-                            protocol: "rest".to_string(),
-                            method: Some(method),
-                            path: Some(url),
-                            source_file: format_source_file(&file.relative_path, line),
-                            confidence: Confidence::High,
-                            extraction_method: "ast_httparty_client".to_string(),
-                            evidence: Some(evidence),
-                        });
-                    }
-                }
-            }
-
-            // Detect Sidekiq/ActiveJob queue operations (line-based — avoids overly broad AST query)
-            if frameworks.sidekiq
-                || frameworks.activejob
-                || source.contains("perform_async")
-                || source.contains("perform_later")
-            {
-                for (i, line) in source.lines().enumerate() {
-                    let trimmed = line.trim();
-                    // Match patterns like: MyWorker.perform_async(args) or MyJob.perform_later(args)
-                    for method_name in &["perform_async", "perform_later"] {
-                        if let Some(pos) = trimmed.find(&format!(".{}", method_name)) {
-                            let worker = trimmed[..pos]
-                                .split_whitespace()
-                                .last()
-                                .unwrap_or("")
-                                .to_string();
-                            if !worker.is_empty()
-                                && worker.chars().next().is_some_and(|c| c.is_uppercase())
-                            {
-                                connections.push(ConnectionInfo {
-                                    source_service: source_service.unwrap_or("").to_string(),
-                                    target_name: worker,
-                                    protocol: "redis".to_string(),
-                                    method: None,
-                                    path: None,
-                                    source_file: format_source_file(&file.relative_path, i + 1),
-                                    confidence: Confidence::High,
-                                    extraction_method: "ast_queue_operation".to_string(),
-                                    evidence: Some(format_evidence(trimmed)),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Detect ActiveRecord database connections
-            // Detect ActiveRecord database connections (line-based for reliable adapter extraction)
-            if frameworks.activerecord || source.contains("ActiveRecord::Base.establish_connection")
-            {
-                for (i, line) in source.lines().enumerate() {
-                    if line.contains("establish_connection") && line.contains("ActiveRecord") {
-                        // Detect adapter from the source line itself, not from AST captures
-                        let adapter = if line.contains("postgresql") {
-                            "postgresql"
-                        } else if line.contains("mysql2") {
-                            "mysql2"
-                        } else if line.contains("sqlite3") {
-                            "sqlite3"
-                        } else {
-                            "postgresql" // default assumption for Rails
-                        };
-
-                        connections.push(ConnectionInfo {
-                            source_service: source_service.unwrap_or("").to_string(),
-                            target_name: String::new(),
-                            protocol: adapter.to_string(),
-                            method: None,
-                            path: None,
-                            source_file: format_source_file(&file.relative_path, i + 1),
-                            confidence: Confidence::High,
-                            extraction_method: "ast_activerecord_connection".to_string(),
-                            evidence: Some(format_evidence(line.trim())),
-                        });
-                    }
-                }
-            }
         }
 
         ExtractionResult {
             services: Vec::new(),
             endpoints,
-            connections,
+            connections: Vec::new(),
             schemas: Vec::new(),
             actors: Vec::new(),
         }
@@ -669,47 +400,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_faraday_client_detection() {
-        let plugin = RubyPlugin;
-
-        let files = vec![
-            ("/repo/Gemfile", "Gemfile", r#"gem "faraday""#),
-            (
-                "/repo/lib/client.rb",
-                "lib/client.rb",
-                r#"Faraday.get("/api/users")"#,
-            ),
-        ];
-
-        let ctx = create_context(files);
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "rest");
-        assert_eq!(conn.extraction_method, "ast_faraday_client");
-    }
-
-    #[test]
-    fn test_source_file_format() {
-        assert_eq!(
-            format_source_file("config/routes.rb", 15),
-            "config/routes.rb:15"
-        );
-    }
-
-    #[test]
-    fn test_evidence_capping() {
-        let long_text = "a".repeat(300);
-        let capped = format_evidence(&long_text);
-        assert!(capped.len() <= 200);
-        assert!(capped.ends_with("..."));
-
-        let short_text = "short";
-        let result = format_evidence(short_text);
-        assert_eq!(result, "short");
-    }
 
     #[test]
     fn test_resources_expansion_correct_paths() {
@@ -726,96 +416,6 @@ mod tests {
         assert_eq!(paths[6], "/photos/:id");
     }
 
-    #[test]
-    fn test_httparty_client_detection() {
-        let plugin = RubyPlugin;
 
-        let files = vec![
-            ("/repo/Gemfile", "Gemfile", r#"gem "httparty""#),
-            (
-                "/repo/lib/api_client.rb",
-                "lib/api_client.rb",
-                r#"HTTParty.get("http://api.example.com/users")"#,
-            ),
-        ];
 
-        let ctx = create_context(files);
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "rest");
-        assert_eq!(conn.extraction_method, "ast_httparty_client");
-        assert_eq!(conn.confidence, Confidence::High);
-    }
-
-    #[test]
-    fn test_sidekiq_queue_detection() {
-        let plugin = RubyPlugin;
-
-        let files = vec![
-            ("/repo/Gemfile", "Gemfile", r#"gem "sidekiq""#),
-            (
-                "/repo/app/workers/user_worker.rb",
-                "app/workers/user_worker.rb",
-                r#"UserWorker.perform_async(user_id, email)"#,
-            ),
-        ];
-
-        let ctx = create_context(files);
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "redis");
-        assert_eq!(conn.extraction_method, "ast_queue_operation");
-        assert_eq!(conn.target_name, "UserWorker");
-        assert_eq!(conn.confidence, Confidence::High);
-    }
-
-    #[test]
-    fn test_activejob_queue_detection() {
-        let plugin = RubyPlugin;
-
-        let files = vec![
-            ("/repo/Gemfile", "Gemfile", r#"gem "activejob""#),
-            (
-                "/repo/app/jobs/send_email_job.rb",
-                "app/jobs/send_email_job.rb",
-                r#"SendEmailJob.perform_later(user_id)"#,
-            ),
-        ];
-
-        let ctx = create_context(files);
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "redis");
-        assert_eq!(conn.extraction_method, "ast_queue_operation");
-        assert_eq!(conn.target_name, "SendEmailJob");
-    }
-
-    #[test]
-    fn test_activerecord_connection_detection() {
-        let plugin = RubyPlugin;
-
-        let files = vec![
-            ("/repo/Gemfile", "Gemfile", r#"gem "activerecord""#),
-            (
-                "/repo/lib/db_connect.rb",
-                "lib/db_connect.rb",
-                r#"ActiveRecord::Base.establish_connection(adapter: 'postgresql', host: 'localhost')"#,
-            ),
-        ];
-
-        let ctx = create_context(files);
-        let result = plugin.extract(&ctx);
-
-        assert!(!result.connections.is_empty());
-        let conn = &result.connections[0];
-        assert_eq!(conn.protocol, "postgresql");
-        assert_eq!(conn.extraction_method, "ast_activerecord_connection");
-        assert_eq!(conn.confidence, Confidence::High);
-    }
 }
