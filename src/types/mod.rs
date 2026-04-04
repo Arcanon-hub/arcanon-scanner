@@ -3,6 +3,7 @@
 //! Every field matches docs/architecture.md section 5 exactly.
 
 /// Confidence level for a finding (service, endpoint, connection, schema).
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Confidence {
     High,
@@ -11,6 +12,7 @@ pub enum Confidence {
 }
 
 /// A field within a schema (request, response, or event).
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FieldInfo {
     pub name: String,
@@ -19,10 +21,12 @@ pub struct FieldInfo {
 }
 
 /// Actor information — empty struct in Phase 1, full definition deferred.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ActorInfo {}
 
 /// Service detected in the codebase.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ServiceInfo {
     pub name: String,
@@ -35,6 +39,7 @@ pub struct ServiceInfo {
 }
 
 /// Endpoint (HTTP route, gRPC service, GraphQL query/mutation, etc.)
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct EndpointInfo {
     pub service_name: String,
@@ -47,6 +52,7 @@ pub struct EndpointInfo {
 }
 
 /// Connection from one service to another (HTTP call, DB access, message queue, etc.)
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ConnectionInfo {
     pub source_service: String,
@@ -61,6 +67,7 @@ pub struct ConnectionInfo {
 }
 
 /// Schema definition (request body, response, event payload, etc.)
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SchemaInfo {
     pub name: String,
@@ -73,6 +80,7 @@ pub struct SchemaInfo {
 }
 
 /// Complete extraction result from a single plugin.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct ExtractionResult {
     pub services: Vec<ServiceInfo>,

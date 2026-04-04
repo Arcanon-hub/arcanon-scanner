@@ -13,6 +13,7 @@ pub mod config;
 pub mod lang;
 
 /// A single file's content and path metadata, passed to plugins.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FileContext {
     /// Absolute path to the file.
@@ -24,6 +25,7 @@ pub struct FileContext {
 }
 
 /// All inputs available to a plugin during extraction.
+#[allow(dead_code)]
 pub struct ExtractionContext {
     /// All files matching this plugin's file_patterns.
     pub files: Vec<FileContext>,
@@ -36,6 +38,7 @@ pub struct ExtractionContext {
 /// The plugin trait that all 15 built-in plugins (8 config + 7 language) implement.
 ///
 /// extract() is SYNCHRONOUS. Do not add async methods. Do not use tokio inside implementations.
+#[allow(dead_code)]
 pub trait LanguagePlugin: Send + Sync {
     /// Human-readable plugin name (e.g., "typescript", "openapi").
     fn name(&self) -> &str;

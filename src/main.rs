@@ -92,8 +92,8 @@ fn main() {
     let file_cfg = config::load_file_config(&cli.path);
 
     // Apply precedence: CLI flag > env var > .arcanon.toml > default
-    let _hub_url = cli.hub_url.or_else(|| file_cfg.scanner.hub_url);
-    let _project_slug = cli.project_slug.or_else(|| file_cfg.scanner.project_slug);
+    let _hub_url = cli.hub_url.or(file_cfg.scanner.hub_url);
+    let _project_slug = cli.project_slug.or(file_cfg.scanner.project_slug);
     let mut exclude = cli.exclude.clone();
     exclude.extend(file_cfg.scanner.exclude.paths.unwrap_or_default());
 
