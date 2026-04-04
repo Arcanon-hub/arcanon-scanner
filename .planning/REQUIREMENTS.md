@@ -93,16 +93,16 @@
 
 ### Upload
 
-- [ ] **UPLD-01**: Scanner uploads ScanPayloadV1 via POST /api/v1/scans/upload with Bearer API key auth
-- [ ] **UPLD-02**: Scanner retries on 429 and 5xx with exponential backoff (1s, 2s, 4s — max 3 retries)
-- [ ] **UPLD-03**: Scanner handles 202 (success), 400 (validation error), 401 (auth error), 409 (duplicate — exit 0), 413 (too large)
-- [ ] **UPLD-04**: Scanner saves payload to timestamped JSON file when network is unreachable
+- [x] **UPLD-01**: Scanner uploads ScanPayloadV1 via POST /api/v1/scans/upload with Bearer API key auth
+- [x] **UPLD-02**: Scanner retries on 429 and 5xx with exponential backoff (1s, 2s, 4s — max 3 retries)
+- [x] **UPLD-03**: Scanner handles 202 (success), 400 (validation error), 401 (auth error), 409 (duplicate — exit 0), 413 (too large)
+- [x] **UPLD-04**: Scanner saves payload to timestamped JSON file when network is unreachable
 
 ### Fault Tolerance
 
 - [x] **FTOL-01**: Single file parse failure logs warning and continues scanning
-- [ ] **FTOL-02**: Plugin crash/panic is caught, logged, and other plugins continue
-- [ ] **FTOL-03**: No services found produces a warning but still uploads (empty findings are valid)
+- [x] **FTOL-02**: Plugin crash/panic is caught, logged, and other plugins continue
+- [x] **FTOL-03**: No services found produces a warning but still uploads (empty findings are valid)
 - [ ] **FTOL-04**: Missing git context uses directory name and deterministic content hash with user warning
 
 ### Build Tooling
@@ -202,13 +202,13 @@
 | PIPE-03 | Phase 3 | Pending |
 | PIPE-04 | Phase 3 | Pending |
 | PIPE-05 | Phase 3 | Pending |
-| UPLD-01 | Phase 3 | Pending |
-| UPLD-02 | Phase 3 | Pending |
-| UPLD-03 | Phase 3 | Pending |
-| UPLD-04 | Phase 3 | Pending |
+| UPLD-01 | Phase 3 | Complete |
+| UPLD-02 | Phase 3 | Complete |
+| UPLD-03 | Phase 3 | Complete |
+| UPLD-04 | Phase 3 | Complete |
 | FTOL-01 | Phase 3 | Complete |
-| FTOL-02 | Phase 3 | Pending |
-| FTOL-03 | Phase 3 | Pending |
+| FTOL-02 | Phase 3 | Complete |
+| FTOL-03 | Phase 3 | Complete |
 | FTOL-04 | Phase 3 | Pending |
 | DETQ-01 | Phase 3 | Complete |
 | DETQ-02 | Phase 3 | Complete |

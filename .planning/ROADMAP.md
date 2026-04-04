@@ -69,7 +69,7 @@ Plans:
 - [x] 03-01-PLAN.md — Infrastructure config plugins: DockerfilePlugin, EnvPlugin, ComposePlugin, KubernetesPlugin
 - [x] 03-02-PLAN.md — Spec config plugins: OpenApiPlugin (OAS 3.0 + Swagger 2.0), ProtoPlugin, GraphqlPlugin, AsyncApiPlugin
 - [ ] 03-03-PLAN.md — Core pipeline: merger (service dedup + spec-override), resolver (path normalization + intra-repo matching), payload assembler (ScanPayloadV1)
-- [ ] 03-04-PLAN.md — Upload module: POST with retry (1s/2s/4s), response codes (202/409/429/5xx), file fallback; fault-tolerance wiring (FTOL-02/03/04)
+- [x] 03-04-PLAN.md — Upload module: POST with retry (1s/2s/4s), response codes (202/409/429/5xx), file fallback; fault-tolerance wiring (FTOL-02/03/04)
 - [ ] 03-05-PLAN.md — Scanner orchestration: default_plugins() registry, rayon parallel execution, catch_unwind per plugin, --dry-run/--output wiring, end-to-end test
 
 ### Phase 4: Language Plugins and Hardening
@@ -102,5 +102,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 4/4 | Complete | 2026-04-04 |
 | 2. Infrastructure | 3/3 | Complete | 2026-04-04 |
-| 3. Pipeline and Config Plugins | 2/5 | In Progress|  |
+| 3. Pipeline and Config Plugins | 3/5 | In Progress|  |
 | 4. Language Plugins and Hardening | 0/8 | Not started | - |
