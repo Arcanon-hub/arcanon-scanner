@@ -14,6 +14,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Deserialize)]
 pub struct PatternFile {
     pub version: String,
+    #[allow(dead_code)]
     pub updated_at: String,
     pub patterns: Vec<Pattern>,
 }
@@ -22,9 +23,12 @@ pub struct PatternFile {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Pattern {
     pub id: String,
+    #[allow(dead_code)]
     pub name: String,
+    #[allow(dead_code)]
     pub description: String,
     pub languages: Vec<String>,
+    #[allow(dead_code)]
     pub file_patterns: Vec<String>,
     pub import_gate: Vec<String>,
     pub detections: Vec<Detection>,
@@ -35,6 +39,7 @@ pub struct Pattern {
 pub struct Detection {
     #[serde(rename = "match")]
     pub match_str: String,
+    #[allow(dead_code)]
     pub kind: String,
     pub protocol: String,
     pub confidence: PatternConfidence,
@@ -94,6 +99,12 @@ pub struct PatternRegistry {
 }
 
 impl PatternRegistry {
+    /// Construct registry directly from a pattern list (for testing).
+    #[allow(dead_code)]
+    pub fn from_patterns(patterns: Vec<Pattern>, version: String) -> Self {
+        Self { patterns, version, source: PatternSource::None }
+    }
+
     /// Load patterns from remote or cache. Async function; must be called from tokio context.
     ///
     /// Fetch strategy:
@@ -224,6 +235,7 @@ impl PatternRegistry {
     }
 
     /// Access the patterns slice
+    #[allow(dead_code)]
     pub fn patterns(&self) -> &[Pattern] {
         &self.patterns
     }
