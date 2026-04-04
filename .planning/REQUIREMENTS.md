@@ -44,14 +44,14 @@
 
 ### Config Plugins
 
-- [ ] **CPLU-01**: OpenAPI plugin parses openapi/swagger JSON/YAML specs to extract endpoints, schemas, and service names
-- [ ] **CPLU-02**: Proto plugin parses .proto files to extract gRPC services, rpc methods, and message schemas
-- [ ] **CPLU-03**: GraphQL plugin parses .graphql/.gql files to extract queries, mutations, subscriptions, and types
-- [ ] **CPLU-04**: AsyncAPI plugin parses asyncapi JSON/YAML to extract message channels, event schemas, and protocols
-- [ ] **CPLU-05**: Compose plugin parses docker-compose YAML to extract services, depends_on connections, ports, and env vars
-- [ ] **CPLU-06**: Kubernetes plugin parses k8s manifests to extract Services, Deployments, ConfigMaps, and env vars
-- [ ] **CPLU-07**: Dockerfile plugin detects Dockerfile/Containerfile presence as service boundary markers
-- [ ] **CPLU-08**: Env plugin reads .env files to populate the variable resolution chain
+- [x] **CPLU-01**: OpenAPI plugin parses openapi/swagger JSON/YAML specs to extract endpoints, schemas, and service names
+- [x] **CPLU-02**: Proto plugin parses .proto files to extract gRPC services, rpc methods, and message schemas
+- [x] **CPLU-03**: GraphQL plugin parses .graphql/.gql files to extract queries, mutations, subscriptions, and types
+- [x] **CPLU-04**: AsyncAPI plugin parses asyncapi JSON/YAML to extract message channels, event schemas, and protocols
+- [x] **CPLU-05**: Compose plugin parses docker-compose YAML to extract services, depends_on connections, ports, and env vars
+- [x] **CPLU-06**: Kubernetes plugin parses k8s manifests to extract Services, Deployments, ConfigMaps, and env vars
+- [x] **CPLU-07**: Dockerfile plugin detects Dockerfile/Containerfile presence as service boundary markers
+- [x] **CPLU-08**: Env plugin reads .env files to populate the variable resolution chain
 
 ### Language Plugins
 
@@ -70,10 +70,10 @@
 
 ### Detection Quality
 
-- [ ] **DETQ-01**: Every finding carries a confidence field (High/Medium/Low) based on extraction method
-- [ ] **DETQ-02**: Connection findings include evidence snippets (code fragment where the call was found)
-- [ ] **DETQ-03**: Connection findings include source_file attribution (file:line format)
-- [ ] **DETQ-04**: Spec-file schemas override source-code schemas when both exist for the same endpoint
+- [x] **DETQ-01**: Every finding carries a confidence field (High/Medium/Low) based on extraction method
+- [x] **DETQ-02**: Connection findings include evidence snippets (code fragment where the call was found)
+- [x] **DETQ-03**: Connection findings include source_file attribution (file:line format)
+- [x] **DETQ-04**: Spec-file schemas override source-code schemas when both exist for the same endpoint
 - [ ] **DETQ-05**: Plugins that use two-phase extraction (NestJS @Controller prefix, Spring @RequestMapping, ASP.NET [Route]) produce correct full paths
 
 ### Core Pipeline
@@ -100,7 +100,7 @@
 
 ### Fault Tolerance
 
-- [ ] **FTOL-01**: Single file parse failure logs warning and continues scanning
+- [x] **FTOL-01**: Single file parse failure logs warning and continues scanning
 - [ ] **FTOL-02**: Plugin crash/panic is caught, logged, and other plugins continue
 - [ ] **FTOL-03**: No services found produces a warning but still uploads (empty findings are valid)
 - [ ] **FTOL-04**: Missing git context uses directory name and deterministic content hash with user warning
@@ -189,14 +189,14 @@
 | VARS-03 | Phase 2 | Pending |
 | VARS-04 | Phase 2 | Pending |
 | VARS-05 | Phase 2 | Pending |
-| CPLU-01 | Phase 3 | Pending |
-| CPLU-02 | Phase 3 | Pending |
-| CPLU-03 | Phase 3 | Pending |
-| CPLU-04 | Phase 3 | Pending |
-| CPLU-05 | Phase 3 | Pending |
-| CPLU-06 | Phase 3 | Pending |
-| CPLU-07 | Phase 3 | Pending |
-| CPLU-08 | Phase 3 | Pending |
+| CPLU-01 | Phase 3 | Complete |
+| CPLU-02 | Phase 3 | Complete |
+| CPLU-03 | Phase 3 | Complete |
+| CPLU-04 | Phase 3 | Complete |
+| CPLU-05 | Phase 3 | Complete |
+| CPLU-06 | Phase 3 | Complete |
+| CPLU-07 | Phase 3 | Complete |
+| CPLU-08 | Phase 3 | Complete |
 | PIPE-01 | Phase 3 | Pending |
 | PIPE-02 | Phase 3 | Pending |
 | PIPE-03 | Phase 3 | Pending |
@@ -206,14 +206,14 @@
 | UPLD-02 | Phase 3 | Pending |
 | UPLD-03 | Phase 3 | Pending |
 | UPLD-04 | Phase 3 | Pending |
-| FTOL-01 | Phase 3 | Pending |
+| FTOL-01 | Phase 3 | Complete |
 | FTOL-02 | Phase 3 | Pending |
 | FTOL-03 | Phase 3 | Pending |
 | FTOL-04 | Phase 3 | Pending |
-| DETQ-01 | Phase 3 | Pending |
-| DETQ-02 | Phase 3 | Pending |
-| DETQ-03 | Phase 3 | Pending |
-| DETQ-04 | Phase 3 | Pending |
+| DETQ-01 | Phase 3 | Complete |
+| DETQ-02 | Phase 3 | Complete |
+| DETQ-03 | Phase 3 | Complete |
+| DETQ-04 | Phase 3 | Complete |
 | MONO-04 | Phase 3 | Pending |
 | LPLU-01 | Phase 4 | Pending |
 | LPLU-02 | Phase 4 | Pending |
