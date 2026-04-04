@@ -144,17 +144,42 @@ pub fn merge(results: Vec<ExtractionResult>) -> MergedResult {
     }
 }
 
-/// Check if merged result has no services and emit a warning.
-/// Empty services are valid (e.g., infrastructure-only repos), but it's useful to log this.
-/// Called before upload to notify the operator of potentially unexpected scan results.
-pub fn check_empty_findings(merged: &MergedResult) {
-    if merged.services.is_empty() {
-        tracing::warn!(
-            "No services detected. Add a Dockerfile, docker-compose.yml, or configure [services] in .arcanon.toml. \
-             Connections ({}) and schemas ({}) will still be uploaded.",
-            merged.connections.len(),
-            merged.schemas.len()
-        );
+/// If no services were detected but connections exist, infer a default service from the repo.
+/// The repo itself is the deployable unit — a CLI, a script, a lambda, anything that runs and
+/// connects to other things is a service, even without a Dockerfile.
+pub fn infer_service_if_needed(merged: &mut MergedResult, repo_name: &str) {
+    if !merged.services.is_empty() {
+        return;
+    }
+
+    if merged.connections.is_empty() && merged.schemas.is_empty() {
+        tracing::info!("No services, connections, or schemas found — nothing to report");
+        return;
+    }
+
+    tracing::info!(
+        "No explicit service markers (Dockerfile, compose, etc.) found. \
+         Inferring service '{}' from repo with {} connections.",
+        repo_name,
+        merged.connections.len()
+    );
+
+    // Create a default service from the repo
+    merged.services.push(crate::types::ServiceInfo {
+        name: repo_name.to_string(),
+        root_path: ".".to_string(),
+        language: String::new(),
+        service_type: "service".to_string(),
+        boundary_entry: None,
+        confidence: crate::types::Confidence::Medium,
+        extraction_method: "inferred_from_connections".to_string(),
+    });
+
+    // Attribute orphaned connections (source_service == "") to this service
+    for conn in &mut merged.connections {
+        if conn.source_service.is_empty() {
+            conn.source_service = repo_name.to_string();
+        }
     }
 }
 

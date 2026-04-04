@@ -233,8 +233,8 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     let mut merged = merger::merge(results);
     debug!("Merged into {} services", merged.services.len());
 
-    // Step 9: Check for empty findings (warning)
-    merger::check_empty_findings(&merged);
+    // Step 9: Infer service from repo if connections exist but no services detected
+    merger::infer_service_if_needed(&mut merged, &git_context.repo_name);
 
     // Step 10: Apply service overrides
     merger::apply_service_overrides(&mut merged, &config.service_overrides);
