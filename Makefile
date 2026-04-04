@@ -1,4 +1,4 @@
-.PHONY: lint fmt test build
+.PHONY: lint fmt test build install uninstall
 
 ## Run clippy with denied warnings (BLDG-01)
 lint:
@@ -16,3 +16,11 @@ test:
 build:
 	cargo build
 	cargo build --release
+
+## Install to ~/.cargo/bin for local testing
+install:
+	cargo install --path .
+
+## Uninstall from ~/.cargo/bin
+uninstall:
+	cargo uninstall arcanon-scanner
