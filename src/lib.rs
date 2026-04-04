@@ -1,2 +1,9 @@
+pub mod ast;
+pub mod config;
+pub mod core;
 pub mod discovery;
 pub mod git;
+pub mod plugin;
+pub mod types;
+pub mod upload;
+pub mod vars;

@@ -5,6 +5,7 @@ use tracing::info;
 mod ast;
 mod config;
 mod core;
+mod discovery;
 mod git;
 mod plugin;
 mod types;
