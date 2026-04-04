@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Shared types, plugin trait, tree-sitter wrapper, CLI skeleton, build tooling, and CI
 - [ ] **Phase 2: Infrastructure** - File discovery, git context detection, and variable resolution
-- [ ] **Phase 3: Pipeline and Config Plugins** - All 8 config plugins wired through merger, resolver, payload assembly, and upload — end-to-end scan working
+- [x] **Phase 3: Pipeline and Config Plugins** - All 8 config plugins wired through merger, resolver, payload assembly, and upload — end-to-end scan working (completed 2026-04-04)
 - [ ] **Phase 4: Language Plugins and Hardening** - All 7 language plugins with AST extraction, monorepo scoping, and fault tolerance validation
 
 ## Phase Details
@@ -70,7 +70,7 @@ Plans:
 - [x] 03-02-PLAN.md — Spec config plugins: OpenApiPlugin (OAS 3.0 + Swagger 2.0), ProtoPlugin, GraphqlPlugin, AsyncApiPlugin
 - [x] 03-03-PLAN.md — Core pipeline: merger (service dedup + spec-override), resolver (path normalization + intra-repo matching), payload assembler (ScanPayloadV1)
 - [x] 03-04-PLAN.md — Upload module: POST with retry (1s/2s/4s), response codes (202/409/429/5xx), file fallback; fault-tolerance wiring (FTOL-02/03/04)
-- [ ] 03-05-PLAN.md — Scanner orchestration: default_plugins() registry, rayon parallel execution, catch_unwind per plugin, --dry-run/--output wiring, end-to-end test
+- [x] 03-05-PLAN.md — Scanner orchestration: default_plugins() registry, rayon parallel execution, catch_unwind per plugin, --dry-run/--output wiring, end-to-end test
 
 ### Phase 4: Language Plugins and Hardening
 **Goal**: All 7 language plugins produce correct endpoints and connections from AST queries, monorepo service scoping works by nearest-ancestor, and the full scanner passes end-to-end against a polyglot fixture repo
@@ -102,5 +102,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 4/4 | Complete | 2026-04-04 |
 | 2. Infrastructure | 3/3 | Complete | 2026-04-04 |
-| 3. Pipeline and Config Plugins | 3/5 | In Progress|  |
+| 3. Pipeline and Config Plugins | 5/5 | Complete   | 2026-04-04 |
 | 4. Language Plugins and Hardening | 0/8 | Not started | - |
