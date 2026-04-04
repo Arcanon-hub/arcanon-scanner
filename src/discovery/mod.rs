@@ -19,6 +19,11 @@ pub const BUILT_IN_EXCLUDES: &[&str] = &[
     "out/",
     ".next/",
     "vendor/",
+    "tests/",
+    "test/",
+    "__tests__/",
+    "spec/",
+    "fixtures/",
 ];
 
 /// Walks a repository directory and returns all files that pass all filters.

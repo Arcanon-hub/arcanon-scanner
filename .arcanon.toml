@@ -1,12 +1,10 @@
 # Arcanon Scanner — self-scan configuration
-# Excludes test fixtures so scanning this repo shows clean results
 
 [scanner]
 project_slug = "arcanon-scanner"
 
 [scanner.exclude]
 paths = [
-    "tests/**",
     ".planning/**",
     ".claude/**",
 ]
