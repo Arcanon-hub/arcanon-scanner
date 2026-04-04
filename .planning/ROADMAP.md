@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Foundation** - Shared types, plugin trait, tree-sitter wrapper, CLI skeleton, build tooling, and CI
 - [ ] **Phase 2: Infrastructure** - File discovery, git context detection, and variable resolution
 - [x] **Phase 3: Pipeline and Config Plugins** - All 8 config plugins wired through merger, resolver, payload assembly, and upload — end-to-end scan working (completed 2026-04-04)
-- [ ] **Phase 4: Language Plugins and Hardening** - All 7 language plugins with AST extraction, monorepo scoping, and fault tolerance validation
+- [x] **Phase 4: Language Plugins and Hardening** - All 7 language plugins with AST extraction, monorepo scoping, and fault tolerance validation (completed 2026-04-04)
 
 ## Phase Details
 
@@ -86,12 +86,12 @@ Plans:
 Plans:
 - [x] 04-01-PLAN.md — AstHelper wrapper, ExtractionContext.service_roots, scope_to_service, all 7 plugin stubs
 - [x] 04-02-PLAN.md — TypeScript plugin: Express/NestJS routes (two-phase), fetch/axios clients, MQ/DB/gRPC
-- [ ] 04-03-PLAN.md — Python plugin: FastAPI/Django/Flask routes, HTTP/MQ/DB/industrial/gRPC clients
+- [x] 04-03-PLAN.md — Python plugin: FastAPI/Django/Flask routes, HTTP/MQ/DB/industrial/gRPC clients
 - [x] 04-04-PLAN.md — Go plugin: net/http/Gin/Echo routes, http.Get/grpc.Dial clients
 - [x] 04-05-PLAN.md — Java plugin: Spring Boot routes (two-phase), RestTemplate/WebClient/gRPC clients
 - [x] 04-06-PLAN.md — C# plugin: ASP.NET Core routes (two-phase + [controller] expansion), HttpClient/gRPC clients
 - [x] 04-07-PLAN.md — Rust plugin (Actix/Axum/reqwest/tokio-modbus) + Ruby plugin (Rails resources expansion/Faraday)
-- [ ] 04-08-PLAN.md — Polyglot fixture + end-to-end integration test (MONO-01/02/03 + DETQ-05 verification)
+- [x] 04-08-PLAN.md — Polyglot fixture + end-to-end integration test (MONO-01/02/03 + DETQ-05 verification)
 
 ## Progress
 
