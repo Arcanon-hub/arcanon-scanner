@@ -51,7 +51,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — File discovery module: walk_repo() with built-in excludes, binary guard, line-length guard, symlink skip
 - [x] 02-02-PLAN.md — Git context module: detect_git_context() with gix + full CI env-var fallback chain
-- [ ] 02-03-PLAN.md — Variable resolution module: VariableStore from .env, docker-compose, k8s ConfigMap sources
+- [x] 02-03-PLAN.md — Variable resolution module: VariableStore from .env, docker-compose, k8s ConfigMap sources
 
 ### Phase 3: Pipeline and Config Plugins
 **Goal**: A complete end-to-end scan using config plugins only — discovers files, runs all 8 config plugins in parallel, merges results, resolves intra-repo connections, assembles a valid ScanPayloadV1, and uploads it or writes it to a file
@@ -100,7 +100,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 3/4 | In Progress|  |
-| 2. Infrastructure | 0/3 | Not started | - |
+| 1. Foundation | 4/4 | Complete | 2026-04-04 |
+| 2. Infrastructure | 3/3 | Complete | 2026-04-04 |
 | 3. Pipeline and Config Plugins | 0/5 | Not started | - |
 | 4. Language Plugins and Hardening | 0/8 | Not started | - |
