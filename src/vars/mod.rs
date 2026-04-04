@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Service target extracted from a URL (hostname + optional port)
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceTarget {
     pub hostname: String,
@@ -13,10 +14,17 @@ pub struct ServiceTarget {
 /// 2. compose_env (middle) — docker-compose environment entries
 /// 3. k8s_env (lowest) — Kubernetes ConfigMap data
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct VariableStore {
     env_files: HashMap<String, String>,
     compose_env: HashMap<String, String>,
     k8s_env: HashMap<String, String>,
+}
+
+impl Default for VariableStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VariableStore {
@@ -30,6 +38,7 @@ impl VariableStore {
     }
 
     /// Resolve a variable name to its value, checking layers in priority order
+    #[allow(dead_code)]
     pub fn resolve(&self, key: &str) -> Option<&str> {
         self.env_files
             .get(key)
@@ -39,6 +48,7 @@ impl VariableStore {
     }
 
     /// Resolve a variable name to a ServiceTarget by parsing it as a URL
+    #[allow(dead_code)]
     pub fn resolve_to_target(&self, key: &str) -> Option<ServiceTarget> {
         let val = self.resolve(key)?;
         parse_url_to_service_target(val)
@@ -46,6 +56,7 @@ impl VariableStore {
 }
 
 /// Parse a URL string into a ServiceTarget (hostname + optional port)
+#[allow(dead_code)]
 fn parse_url_to_service_target(val: &str) -> Option<ServiceTarget> {
     let url = url::Url::parse(val).ok()?;
     let hostname = url.host_str()?.to_string();
@@ -60,7 +71,7 @@ fn parse_url_to_service_target(val: &str) -> Option<ServiceTarget> {
 /// 1. .env files (in order: .env < .env.local < .env.development < .env.production)
 /// 2. docker-compose environment (both list and map forms)
 /// 3. Kubernetes ConfigMap data (from files in k8s/, kubernetes/, or manifests/ dirs)
-pub fn build_variable_store(root: &Path, files: &[PathBuf]) -> VariableStore {
+pub fn build_variable_store(_root: &Path, files: &[PathBuf]) -> VariableStore {
     let mut env_map = HashMap::new();
     let mut compose_map = HashMap::new();
     let mut k8s_map = HashMap::new();
@@ -71,7 +82,7 @@ pub fn build_variable_store(root: &Path, files: &[PathBuf]) -> VariableStore {
         .filter(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .map_or(false, |n| n.starts_with(".env"))
+                .is_some_and(|n| n.starts_with(".env"))
         })
         .collect();
 
@@ -87,11 +98,11 @@ pub fn build_variable_store(root: &Path, files: &[PathBuf]) -> VariableStore {
     // Step 2: Extract docker-compose environment variables
     for path in files {
         let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if filename.contains("docker-compose") || filename.contains("compose") {
-            if filename.ends_with(".yml") || filename.ends_with(".yaml") {
-                if let Ok(content) = std::fs::read_to_string(path) {
-                    compose_map.extend(extract_compose_env(&content));
-                }
+        if (filename.contains("docker-compose") || filename.contains("compose"))
+            && (filename.ends_with(".yml") || filename.ends_with(".yaml"))
+        {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                compose_map.extend(extract_compose_env(&content));
             }
         }
     }
@@ -99,9 +110,9 @@ pub fn build_variable_store(root: &Path, files: &[PathBuf]) -> VariableStore {
     // Step 3: Extract k8s ConfigMap data
     for path in files {
         let in_k8s_dir = path.ancestors().any(|p| {
-            p.file_name().and_then(|n| n.to_str()).map_or(false, |n| {
-                n == "k8s" || n == "kubernetes" || n == "manifests"
-            })
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n == "k8s" || n == "kubernetes" || n == "manifests")
         });
 
         if in_k8s_dir {

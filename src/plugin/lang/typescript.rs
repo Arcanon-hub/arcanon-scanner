@@ -33,43 +33,11 @@ const ROUTE_QUERY_EXPRESS: &str = r#"
     (_)* @handler))
 "#;
 
-const NESTJS_CONTROLLER_QUERY: &str = r#"
-(class_declaration
-  (decorator
-    (call_expression
-      function: (identifier) @dec_name
-      arguments: (arguments (string) @prefix)))
-  name: (type_identifier) @class_name)
-"#;
-
-const NESTJS_METHOD_QUERY: &str = r#"
-(method_definition
-  (decorator
-    (call_expression
-      function: (identifier) @http_dec
-      arguments: (arguments (string)? @method_path)))
-  name: (property_identifier) @handler_name)
-"#;
-
 // Connection detection queries
 const FETCH_CALL_QUERY: &str = r#"
 (call_expression
   function: (identifier) @fn
   arguments: (arguments (_) @url (_)*))
-"#;
-
-const AXIOS_CALL_QUERY: &str = r#"
-(call_expression
-  function: (member_expression
-    object: (identifier) @lib
-    property: (property_identifier) @method)
-  arguments: (arguments (_) @url (_)*))
-"#;
-
-const DB_NEW_QUERY: &str = r#"
-(new_expression
-  constructor: (identifier) @ctor
-  arguments: (arguments (_) @arg))
 "#;
 
 const GRPC_NEW_QUERY: &str = r#"
@@ -102,39 +70,14 @@ fn express_query(lang: &Language) -> &'static Query {
         .get_or_init(|| Query::new(lang, ROUTE_QUERY_EXPRESS).expect("valid express query"))
 }
 
-// OnceLock query caches for NestJS
-static NESTJS_CONTROLLER_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static NESTJS_METHOD_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-
-fn nestjs_controller_query(lang: &Language) -> &'static Query {
-    NESTJS_CONTROLLER_QUERY_CACHE.get_or_init(|| {
-        Query::new(lang, NESTJS_CONTROLLER_QUERY).expect("valid nestjs controller query")
-    })
-}
-
-fn nestjs_method_query(lang: &Language) -> &'static Query {
-    NESTJS_METHOD_QUERY_CACHE
-        .get_or_init(|| Query::new(lang, NESTJS_METHOD_QUERY).expect("valid nestjs method query"))
-}
-
 // OnceLock query caches for connection detection
 static FETCH_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static AXIOS_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
-static DB_NEW_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static GRPC_NEW_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static MONGOOSE_CONNECT_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static KAFKA_SEND_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 
 fn fetch_query(lang: &Language) -> &'static Query {
     FETCH_QUERY_CACHE.get_or_init(|| Query::new(lang, FETCH_CALL_QUERY).expect("valid fetch query"))
-}
-
-fn axios_query(lang: &Language) -> &'static Query {
-    AXIOS_QUERY_CACHE.get_or_init(|| Query::new(lang, AXIOS_CALL_QUERY).expect("valid axios query"))
-}
-
-fn db_new_query(lang: &Language) -> &'static Query {
-    DB_NEW_QUERY_CACHE.get_or_init(|| Query::new(lang, DB_NEW_QUERY).expect("valid db new query"))
 }
 
 fn grpc_new_query(lang: &Language) -> &'static Query {
@@ -589,9 +532,8 @@ fn extract_grpc_clients(
                 .trim_matches('\'')
                 .to_string();
 
-            match capture_name {
-                "ctor" => ctor = text,
-                _ => {}
+            if capture_name == "ctor" {
+                ctor = text
             }
 
             line = node.start_position().row + 1;

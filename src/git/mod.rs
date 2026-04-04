@@ -89,7 +89,7 @@ fn detect_remote(repo: Option<&gix::Repository>, root: &Path) -> (Option<String>
         .and_then(|url| {
             // Extract basename from URL: split on '/', take last segment, strip .git
             url.split('/')
-                .last()
+                .next_back()
                 .map(|segment| segment.strip_suffix(".git").unwrap_or(segment).to_string())
         })
         .unwrap_or_else(|| {
@@ -205,7 +205,7 @@ fn content_hash_fallback(root: &Path) -> String {
     let mut entries: BTreeMap<String, u64> = BTreeMap::new();
 
     // Walk the directory recursively and collect file paths and sizes
-    if let Ok(_) = fs::read_dir(root) {
+    if fs::read_dir(root).is_ok() {
         fn walk_dir(
             dir: &Path,
             root: &Path,

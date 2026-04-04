@@ -227,7 +227,7 @@ fn extract_fastapi_flask_routes(
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
         while let Some(m) = matches.next() {
-            let mut obj_name = "";
+            let mut _obj_name = "";
             let mut http_method = "";
             let mut path = "";
             let mut handler = "";
@@ -242,7 +242,7 @@ fn extract_fastapi_flask_routes(
                     .trim_matches('\'');
 
                 match name {
-                    "obj" => obj_name = text,
+                    "obj" => _obj_name = text,
                     "http_method" => http_method = text,
                     "path" => path = text,
                     "handler" => handler = text,

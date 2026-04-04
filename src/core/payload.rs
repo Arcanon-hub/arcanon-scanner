@@ -119,6 +119,7 @@ fn confidence_str(c: &Confidence) -> String {
 /// - `started_at`: RFC3339 timestamp when scan started
 /// - `completed_at`: RFC3339 timestamp when scan completed
 /// - `files_scanned`: Count of files processed during scan
+#[allow(clippy::too_many_arguments)]
 pub fn assemble(
     merged: MergedResult,
     repo_url: Option<String>,

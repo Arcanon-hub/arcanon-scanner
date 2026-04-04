@@ -3,6 +3,16 @@ use crate::types::{Confidence, EndpointInfo, ExtractionResult, FieldInfo, Schema
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+/// Type alias for OpenAPI/Swagger parse result
+type ParseResult = Result<
+    (
+        Option<crate::types::ServiceInfo>,
+        Vec<EndpointInfo>,
+        Vec<SchemaInfo>,
+    ),
+    String,
+>;
+
 /// OpenAPI 3.0 and Swagger 2.0 specification parser.
 pub struct OpenApiPlugin;
 
@@ -76,17 +86,7 @@ impl LanguagePlugin for OpenApiPlugin {
 }
 
 /// Parse OpenAPI 3.0 specification
-fn parse_openapi_3(
-    content: &str,
-    relative_path: &str,
-) -> Result<
-    (
-        Option<crate::types::ServiceInfo>,
-        Vec<EndpointInfo>,
-        Vec<SchemaInfo>,
-    ),
-    String,
-> {
+fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
     let mut endpoints = Vec::new();
     let mut schemas = Vec::new();
 
@@ -249,17 +249,7 @@ struct SwaggerOperation {
 }
 
 /// Parse Swagger 2.0 specification
-fn parse_swagger_2(
-    content: &str,
-    relative_path: &str,
-) -> Result<
-    (
-        Option<crate::types::ServiceInfo>,
-        Vec<EndpointInfo>,
-        Vec<SchemaInfo>,
-    ),
-    String,
-> {
+fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
     let mut endpoints = Vec::new();
 
     // Try JSON first, then YAML

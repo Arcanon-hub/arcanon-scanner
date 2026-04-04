@@ -1,16 +1,14 @@
 //! Intra-repository connection resolution.
 //! Normalizes endpoint paths to match outbound connection calls and resolves target services locally.
 
-use std::collections::HashMap;
 use crate::core::merger::MergedResult;
+use std::collections::HashMap;
 
 /// Normalize a path by applying URL path parameter normalization rules.
 pub fn normalize_path(path: &str) -> String {
     path.split('/')
         .map(|segment| {
-            if segment.starts_with(':') {
-                "{param}".to_string()
-            } else if segment.starts_with('{') && segment.ends_with('}') {
+            if segment.starts_with(':') || (segment.starts_with('{') && segment.ends_with('}')) {
                 "{param}".to_string()
             } else if segment == "*" {
                 "{*}".to_string()
@@ -59,12 +57,18 @@ mod tests {
 
     #[test]
     fn test_normalize_path_braces_simple() {
-        assert_eq!(normalize_path("/api/v1/users/{userId}"), "/api/v1/users/{param}");
+        assert_eq!(
+            normalize_path("/api/v1/users/{userId}"),
+            "/api/v1/users/{param}"
+        );
     }
 
     #[test]
     fn test_normalize_path_braces_with_constraint() {
-        assert_eq!(normalize_path("/api/v1/users/{id:\\d+}"), "/api/v1/users/{param}");
+        assert_eq!(
+            normalize_path("/api/v1/users/{id:\\d+}"),
+            "/api/v1/users/{param}"
+        );
     }
 
     #[test]
