@@ -74,14 +74,11 @@ fn parse_graphql(
                 line.strip_prefix("input ").unwrap_or("").trim()
             };
 
-            let type_name = type_def
-                .strip_suffix(" {")
-                .unwrap_or("")
-                .trim()
-                .to_string();
+            let type_name = type_def.strip_suffix(" {").unwrap_or("").trim().to_string();
 
             // Special handling for Query, Mutation, Subscription
-            let is_operation_type = type_name == "Query" || type_name == "Mutation" || type_name == "Subscription";
+            let is_operation_type =
+                type_name == "Query" || type_name == "Mutation" || type_name == "Subscription";
 
             let mut fields = Vec::new();
             line_idx += 1;
@@ -178,8 +175,12 @@ type User {
         let (endpoints, schemas) = parse_graphql(schema, "schema.graphql").expect("parse failed");
 
         // Should extract query operations as endpoints
-        assert!(endpoints.iter().any(|e| e.method == "query" && e.path == "getUserById"));
-        assert!(endpoints.iter().any(|e| e.method == "query" && e.path == "listUsers"));
+        assert!(endpoints
+            .iter()
+            .any(|e| e.method == "query" && e.path == "getUserById"));
+        assert!(endpoints
+            .iter()
+            .any(|e| e.method == "query" && e.path == "listUsers"));
 
         // Should extract User type as schema
         assert!(schemas.iter().any(|s| s.name == "User"));
@@ -242,7 +243,8 @@ type Post {
     #[test]
     fn test_graphql_invalid_content() {
         let invalid = "{{{this is not valid graphql";
-        let (endpoints, schemas) = parse_graphql(invalid, "schema.graphql").expect("parse should not fail");
+        let (endpoints, schemas) =
+            parse_graphql(invalid, "schema.graphql").expect("parse should not fail");
         // Simple parser may handle this gracefully
         assert_eq!(endpoints.len() + schemas.len(), 0);
     }

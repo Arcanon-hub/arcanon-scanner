@@ -141,9 +141,46 @@ pub fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
 
     // Step 6: Run plugins in parallel
     let vars_arc = Arc::new(vars);
-    let results = run_plugins_parallel(&plugins, &all_files, &vars_arc, &config.root);
 
-    info!("Plugin execution complete: {} results", results.len());
+    // Build service_roots from config plugin results for monorepo scoping (MONO-01).
+    // First, extract config plugins and run them to discover services.
+    let config_plugins: Vec<&dyn LanguagePlugin> = plugins
+        .iter()
+        .filter(|p| is_config_plugin(p.name()))
+        .map(|b| b.as_ref())
+        .collect();
+
+    let config_results = run_plugins_parallel(
+        &config_plugins,
+        &all_files,
+        &vars_arc,
+        &config.root,
+        &HashMap::new(), // Config plugins don't need service_roots yet
+    );
+
+    let service_roots: HashMap<PathBuf, String> = config_results
+        .iter()
+        .flat_map(|r| r.services.iter())
+        .map(|s| (config.root.join(&s.root_path), s.name.clone()))
+        .collect();
+
+    debug!(
+        "Built service_roots map with {} entries",
+        service_roots.len()
+    );
+
+    // Run all plugins (config + language) with service_roots available
+    let all_results = run_plugins_parallel(
+        &plugins.iter().map(|p| p.as_ref()).collect::<Vec<_>>(),
+        &all_files,
+        &vars_arc,
+        &config.root,
+        &service_roots,
+    );
+
+    info!("Plugin execution complete: {} results", all_results.len());
+
+    let results = all_results;
 
     // Step 7: Merge all results
     let mut merged = merger::merge(results);
@@ -196,10 +233,11 @@ pub fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
 /// - If always_run() is true, pass all matching files (even if empty)
 /// - If always_run() is false and no files match, skip the plugin
 fn run_plugins_parallel(
-    plugins: &[Box<dyn LanguagePlugin>],
+    plugins: &[&dyn LanguagePlugin],
     all_files: &[FileContext],
     vars: &Arc<crate::vars::VariableStore>,
     root: &Path,
+    service_roots: &HashMap<PathBuf, String>,
 ) -> Vec<ExtractionResult> {
     plugins
         .par_iter()
@@ -220,6 +258,7 @@ fn run_plugins_parallel(
                 files: matching,
                 vars: Arc::clone(vars),
                 root: root.to_path_buf(),
+                service_roots: service_roots.clone(),
             };
 
             // Execute plugin with panic isolation (FTOL-02)
@@ -245,6 +284,21 @@ fn run_plugins_parallel(
             }
         })
         .collect()
+}
+
+/// Check if a plugin is a config plugin (runs always and provides ServiceInfo).
+fn is_config_plugin(name: &str) -> bool {
+    matches!(
+        name,
+        "openapi"
+            | "proto"
+            | "graphql"
+            | "asyncapi"
+            | "compose"
+            | "kubernetes"
+            | "dockerfile"
+            | "env"
+    )
 }
 
 /// Filter files by glob patterns using globset.

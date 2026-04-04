@@ -159,6 +159,7 @@ services:
             files: vec![file],
             vars: Arc::new(VariableStore::new()),
             root,
+            service_roots: std::collections::HashMap::new(),
         };
 
         let result = plugin.extract(&ctx);
@@ -205,6 +206,7 @@ services:
             files: vec![file],
             vars: Arc::new(VariableStore::new()),
             root,
+            service_roots: std::collections::HashMap::new(),
         };
 
         let result = plugin.extract(&ctx);
@@ -244,6 +246,7 @@ services:
             files: vec![file],
             vars: Arc::new(VariableStore::new()),
             root,
+            service_roots: std::collections::HashMap::new(),
         };
 
         let result = plugin.extract(&ctx);

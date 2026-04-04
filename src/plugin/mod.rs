@@ -15,6 +15,7 @@
 // tokio::block_on() from a rayon thread causes deadlocks (PITFALLS.md Pitfall 4).
 // The only async code is in src/upload/mod.rs.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -45,6 +46,94 @@ pub struct ExtractionContext {
     pub vars: Arc<VariableStore>,
     /// Absolute path to the repo root.
     pub root: PathBuf,
+    /// Absolute paths of service roots → service name.
+    /// Built from config-plugin ServiceInfo before language plugins run (Phase 4 addition).
+    /// Empty HashMap means monorepo scoping is not applicable (single-service repo).
+    pub service_roots: HashMap<PathBuf, String>,
+}
+
+/// Returns the nearest-ancestor service name for a given file path.
+/// Walks file_path.ancestors() from most-specific to least-specific.
+/// Returns None if the file is not under any known service root (unscoped).
+///
+/// # Arguments
+/// * `file_path` - Absolute path to a file
+/// * `service_roots` - Map of service root paths to service names
+///
+/// # Returns
+/// Option<&str> with the service name if found, None if unscoped
+pub fn scope_to_service<'a>(
+    file_path: &std::path::Path,
+    service_roots: &'a HashMap<PathBuf, String>,
+) -> Option<&'a str> {
+    file_path
+        .ancestors()
+        .find_map(|ancestor| service_roots.get(ancestor))
+        .map(String::as_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scope_to_service_exact_match() {
+        let mut service_roots = HashMap::new();
+        service_roots.insert(PathBuf::from("/repo/service-a"), "service-a".to_string());
+
+        let file_path = PathBuf::from("/repo/service-a/src/app.ts");
+        let result = scope_to_service(&file_path, &service_roots);
+
+        assert_eq!(result, Some("service-a"));
+    }
+
+    #[test]
+    fn test_scope_to_service_nested_file() {
+        let mut service_roots = HashMap::new();
+        service_roots.insert(PathBuf::from("/repo/service-b"), "service-b".to_string());
+
+        let file_path = PathBuf::from("/repo/service-b/src/handlers/user.ts");
+        let result = scope_to_service(&file_path, &service_roots);
+
+        assert_eq!(result, Some("service-b"));
+    }
+
+    #[test]
+    fn test_scope_to_service_unscoped_file() {
+        let mut service_roots = HashMap::new();
+        service_roots.insert(PathBuf::from("/repo/service-a"), "service-a".to_string());
+
+        let file_path = PathBuf::from("/repo/lib/shared.ts");
+        let result = scope_to_service(&file_path, &service_roots);
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_scope_to_service_nearest_ancestor() {
+        let mut service_roots = HashMap::new();
+        service_roots.insert(PathBuf::from("/repo/service-c"), "service-c".to_string());
+        service_roots.insert(
+            PathBuf::from("/repo/service-c/submodule"),
+            "submodule".to_string(),
+        );
+
+        let file_path = PathBuf::from("/repo/service-c/submodule/index.ts");
+        let result = scope_to_service(&file_path, &service_roots);
+
+        // Should find the nearest (most specific) ancestor
+        assert_eq!(result, Some("submodule"));
+    }
+
+    #[test]
+    fn test_scope_to_service_empty_map() {
+        let service_roots = HashMap::new();
+
+        let file_path = PathBuf::from("/repo/service-a/src/app.ts");
+        let result = scope_to_service(&file_path, &service_roots);
+
+        assert_eq!(result, None);
+    }
 }
 
 /// The plugin trait that all 15 built-in plugins (8 config + 7 language) implement.
