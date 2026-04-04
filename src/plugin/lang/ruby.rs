@@ -19,6 +19,10 @@ struct FrameworkSet {
     rails: bool,
     sinatra: bool,
     faraday: bool,
+    httparty: bool,
+    sidekiq: bool,
+    activejob: bool,
+    activerecord: bool,
 }
 
 // Rails/Sinatra literal route detection query
@@ -57,11 +61,40 @@ const NET_HTTP_QUERY: &str = r#"
   arguments: (argument_list (_) @url (_)*))
 "#;
 
+// HTTParty client detection query
+const HTTPARTY_QUERY: &str = r#"
+(call
+  receiver: (constant) @lib
+  method: (identifier) @method
+  arguments: (argument_list (_) @url (_)*))
+"#;
+
+// Sidekiq/ActiveJob queue detection query
+const QUEUE_QUERY: &str = r#"
+(call
+  receiver: (constant) @worker
+  method: (identifier) @method
+  arguments: (argument_list (_)*))
+"#;
+
+// ActiveRecord connection query
+const ACTIVERECORD_QUERY: &str = r#"
+(call
+  receiver: (scope_resolution
+    scope: (constant) @scope
+    name: (constant) @lib)
+  method: (identifier) @method
+  arguments: (argument_list (_)*))
+"#;
+
 // OnceLock query caches
 static ROUTE_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static RESOURCES_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static FARADAY_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 static NET_HTTP_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
+static HTTPARTY_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
+static QUEUE_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
+static ACTIVERECORD_QUERY_CACHE: OnceLock<Query> = OnceLock::new();
 
 fn route_query(lang: &Language) -> &'static Query {
     ROUTE_QUERY_CACHE.get_or_init(|| Query::new(lang, ROUTE_QUERY).expect("valid route query"))
@@ -82,6 +115,20 @@ fn net_http_query(lang: &Language) -> &'static Query {
         .get_or_init(|| Query::new(lang, NET_HTTP_QUERY).expect("valid net_http query"))
 }
 
+fn httparty_query(lang: &Language) -> &'static Query {
+    HTTPARTY_QUERY_CACHE
+        .get_or_init(|| Query::new(lang, HTTPARTY_QUERY).expect("valid httparty query"))
+}
+
+fn queue_query(lang: &Language) -> &'static Query {
+    QUEUE_QUERY_CACHE.get_or_init(|| Query::new(lang, QUEUE_QUERY).expect("valid queue query"))
+}
+
+fn activerecord_query(lang: &Language) -> &'static Query {
+    ACTIVERECORD_QUERY_CACHE
+        .get_or_init(|| Query::new(lang, ACTIVERECORD_QUERY).expect("valid activerecord query"))
+}
+
 /// Detect Ruby frameworks from Gemfile in the file list
 fn detect_frameworks(ctx: &ExtractionContext) -> FrameworkSet {
     let mut frameworks = FrameworkSet::default();
@@ -97,6 +144,22 @@ fn detect_frameworks(ctx: &ExtractionContext) -> FrameworkSet {
             }
             if content.contains("\"faraday\"") || content.contains("'faraday'") {
                 frameworks.faraday = true;
+            }
+            if content.contains("\"httparty\"") || content.contains("'httparty'") {
+                frameworks.httparty = true;
+            }
+            if content.contains("\"sidekiq\"") || content.contains("'sidekiq'") {
+                frameworks.sidekiq = true;
+            }
+            if content.contains("\"activejob\"") || content.contains("'activejob'") {
+                frameworks.activejob = true;
+            }
+            if content.contains("\"activerecord\"")
+                || content.contains("'activerecord'")
+                || content.contains("\"rails\"")
+                || content.contains("'rails'")
+            {
+                frameworks.activerecord = true;
             }
         }
     }
@@ -185,7 +248,14 @@ impl LanguagePlugin for RubyPlugin {
         let frameworks = detect_frameworks(ctx);
 
         // If no Ruby frameworks detected, return empty result
-        if !frameworks.rails && !frameworks.sinatra && !frameworks.faraday {
+        if !frameworks.rails
+            && !frameworks.sinatra
+            && !frameworks.faraday
+            && !frameworks.httparty
+            && !frameworks.sidekiq
+            && !frameworks.activejob
+            && !frameworks.activerecord
+        {
             return ExtractionResult::default();
         }
 
@@ -408,6 +478,170 @@ impl LanguagePlugin for RubyPlugin {
                     }
                 }
             }
+
+            // Detect HTTParty clients
+            if frameworks.httparty || source.contains("HTTParty") {
+                let query = httparty_query(&lang);
+                let mut cursor = QueryCursor::new();
+                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
+
+                while let Some(m) = matches.next() {
+                    let mut lib = String::new();
+                    let mut method = String::new();
+                    let mut url = String::new();
+                    let mut line = 0;
+                    let mut evidence = String::new();
+
+                    for capture in m.captures {
+                        let cap_name = query.capture_names()[capture.index as usize];
+                        let text = capture
+                            .node
+                            .utf8_text(file_bytes)
+                            .unwrap_or("")
+                            .trim_matches('"')
+                            .trim_matches('\'');
+                        line = capture.node.start_position().row + 1;
+                        evidence = format_evidence(text);
+
+                        match cap_name {
+                            "lib" => lib = text.to_string(),
+                            "method" => method = text.to_string(),
+                            "url" => url = text.to_string(),
+                            _ => {}
+                        }
+                    }
+
+                    if lib == "HTTParty"
+                        && ["get", "post", "put", "delete", "patch"]
+                            .contains(&method.to_lowercase().as_str())
+                    {
+                        connections.push(ConnectionInfo {
+                            source_service: source_service.unwrap_or("").to_string(),
+                            target_name: String::new(),
+                            protocol: "rest".to_string(),
+                            method: Some(method),
+                            path: Some(url),
+                            source_file: format_source_file(&file.relative_path, line),
+                            confidence: Confidence::High,
+                            extraction_method: "ast_httparty_client".to_string(),
+                            evidence: Some(evidence),
+                        });
+                    }
+                }
+            }
+
+            // Detect Sidekiq/ActiveJob queue operations
+            if frameworks.sidekiq
+                || frameworks.activejob
+                || source.contains("perform_async")
+                || source.contains("perform_later")
+            {
+                let query = queue_query(&lang);
+                let mut cursor = QueryCursor::new();
+                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
+
+                while let Some(m) = matches.next() {
+                    let mut worker = String::new();
+                    let mut method = String::new();
+                    let mut line = 0;
+                    let mut evidence = String::new();
+
+                    for capture in m.captures {
+                        let cap_name = query.capture_names()[capture.index as usize];
+                        let text = capture
+                            .node
+                            .utf8_text(file_bytes)
+                            .unwrap_or("")
+                            .trim_matches('"')
+                            .trim_matches('\'');
+                        line = capture.node.start_position().row + 1;
+                        evidence = format_evidence(text);
+
+                        match cap_name {
+                            "worker" => worker = text.to_string(),
+                            "method" => method = text.to_string(),
+                            _ => {}
+                        }
+                    }
+
+                    if (method == "perform_async" || method == "perform_later")
+                        && !worker.is_empty()
+                    {
+                        connections.push(ConnectionInfo {
+                            source_service: source_service.unwrap_or("").to_string(),
+                            target_name: worker,
+                            protocol: "redis".to_string(),
+                            method: None,
+                            path: None,
+                            source_file: format_source_file(&file.relative_path, line),
+                            confidence: Confidence::High,
+                            extraction_method: "ast_queue_operation".to_string(),
+                            evidence: Some(evidence),
+                        });
+                    }
+                }
+            }
+
+            // Detect ActiveRecord database connections
+            if frameworks.activerecord || source.contains("ActiveRecord::Base.establish_connection")
+            {
+                let query = activerecord_query(&lang);
+                let mut cursor = QueryCursor::new();
+                let mut matches = cursor.matches(query, tree.root_node(), file_bytes);
+
+                while let Some(m) = matches.next() {
+                    let mut scope = String::new();
+                    let mut lib = String::new();
+                    let mut method = String::new();
+                    let mut line = 0;
+                    let mut evidence = String::new();
+
+                    for capture in m.captures {
+                        let cap_name = query.capture_names()[capture.index as usize];
+                        let text = capture
+                            .node
+                            .utf8_text(file_bytes)
+                            .unwrap_or("")
+                            .trim_matches('"')
+                            .trim_matches('\'');
+                        line = capture.node.start_position().row + 1;
+                        evidence = format_evidence(text);
+
+                        match cap_name {
+                            "scope" => scope = text.to_string(),
+                            "lib" => lib = text.to_string(),
+                            "method" => method = text.to_string(),
+                            _ => {}
+                        }
+                    }
+
+                    if scope == "ActiveRecord" && lib == "Base" && method == "establish_connection"
+                    {
+                        // Try to detect adapter from the evidence string
+                        let adapter = if evidence.contains("postgresql") {
+                            "postgresql".to_string()
+                        } else if evidence.contains("mysql2") {
+                            "mysql2".to_string()
+                        } else if evidence.contains("sqlite3") {
+                            "sqlite3".to_string()
+                        } else {
+                            "postgresql".to_string() // default assumption
+                        };
+
+                        connections.push(ConnectionInfo {
+                            source_service: source_service.unwrap_or("").to_string(),
+                            target_name: String::new(),
+                            protocol: adapter,
+                            method: None,
+                            path: None,
+                            source_file: format_source_file(&file.relative_path, line),
+                            confidence: Confidence::High,
+                            extraction_method: "ast_activerecord_connection".to_string(),
+                            evidence: Some(evidence),
+                        });
+                    }
+                }
+            }
         }
 
         ExtractionResult {
@@ -576,5 +810,98 @@ mod tests {
         assert_eq!(paths[4], "/photos/:id/edit");
         assert_eq!(paths[5], "/photos/:id");
         assert_eq!(paths[6], "/photos/:id");
+    }
+
+    #[test]
+    fn test_httparty_client_detection() {
+        let plugin = RubyPlugin;
+
+        let files = vec![
+            ("/repo/Gemfile", "Gemfile", r#"gem "httparty""#),
+            (
+                "/repo/lib/api_client.rb",
+                "lib/api_client.rb",
+                r#"HTTParty.get("http://api.example.com/users")"#,
+            ),
+        ];
+
+        let ctx = create_context(files);
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.extraction_method, "ast_httparty_client");
+        assert_eq!(conn.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn test_sidekiq_queue_detection() {
+        let plugin = RubyPlugin;
+
+        let files = vec![
+            ("/repo/Gemfile", "Gemfile", r#"gem "sidekiq""#),
+            (
+                "/repo/app/workers/user_worker.rb",
+                "app/workers/user_worker.rb",
+                r#"UserWorker.perform_async(user_id, email)"#,
+            ),
+        ];
+
+        let ctx = create_context(files);
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "redis");
+        assert_eq!(conn.extraction_method, "ast_queue_operation");
+        assert_eq!(conn.target_name, "UserWorker");
+        assert_eq!(conn.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn test_activejob_queue_detection() {
+        let plugin = RubyPlugin;
+
+        let files = vec![
+            ("/repo/Gemfile", "Gemfile", r#"gem "activejob""#),
+            (
+                "/repo/app/jobs/send_email_job.rb",
+                "app/jobs/send_email_job.rb",
+                r#"SendEmailJob.perform_later(user_id)"#,
+            ),
+        ];
+
+        let ctx = create_context(files);
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "redis");
+        assert_eq!(conn.extraction_method, "ast_queue_operation");
+        assert_eq!(conn.target_name, "SendEmailJob");
+    }
+
+    #[test]
+    fn test_activerecord_connection_detection() {
+        let plugin = RubyPlugin;
+
+        let files = vec![
+            ("/repo/Gemfile", "Gemfile", r#"gem "activerecord""#),
+            (
+                "/repo/lib/db_connect.rb",
+                "lib/db_connect.rb",
+                r#"ActiveRecord::Base.establish_connection(adapter: 'postgresql', host: 'localhost')"#,
+            ),
+        ];
+
+        let ctx = create_context(files);
+        let result = plugin.extract(&ctx);
+
+        assert!(!result.connections.is_empty());
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "postgresql");
+        assert_eq!(conn.extraction_method, "ast_activerecord_connection");
+        assert_eq!(conn.confidence, Confidence::High);
     }
 }
