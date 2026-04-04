@@ -46,7 +46,12 @@ Plans:
   2. Running against a git repo produces correct repo_url, branch, and commit SHA in the output; running in CI with GITHUB_REF_NAME set uses that value as the branch
   3. Running with --repo-url, --branch, --commit-sha overrides all auto-detected git values
   4. A repo containing .env, docker-compose.yml, and a Kubernetes ConfigMap produces a VariableStore where `${DB_HOST}` resolves to its actual value from the appropriate source
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — File discovery module: walk_repo() with built-in excludes, binary guard, line-length guard, symlink skip
+- [ ] 02-02-PLAN.md — Git context module: detect_git_context() with gix + full CI env-var fallback chain
+- [ ] 02-03-PLAN.md — Variable resolution module: VariableStore from .env, docker-compose, k8s ConfigMap sources
 
 ### Phase 3: Pipeline and Config Plugins
 **Goal**: A complete end-to-end scan using config plugins only — discovers files, runs all 8 config plugins in parallel, merges results, resolves intra-repo connections, assembles a valid ScanPayloadV1, and uploads it or writes it to a file
@@ -80,6 +85,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/4 | In progress | - |
-| 2. Infrastructure | 0/TBD | Not started | - |
+| 2. Infrastructure | 0/3 | Not started | - |
 | 3. Pipeline and Config Plugins | 0/TBD | Not started | - |
 | 4. Language Plugins and Hardening | 0/TBD | Not started | - |
