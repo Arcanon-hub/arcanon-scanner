@@ -1,3 +1,201 @@
+use clap::Parser;
+use std::path::PathBuf;
+use tracing::info;
+
+mod ast;
+mod config;
+mod core;
+mod git;
+mod plugin;
+mod types;
+mod upload;
+mod vars;
+
+/// Static service topology scanner for Arcanon Hub
+#[derive(Parser, Debug)]
+#[command(
+    name = "arcanon-scanner",
+    version,
+    about = "Static service topology scanner"
+)]
+pub struct Cli {
+    /// Root directory to scan
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Hub API endpoint
+    #[arg(long, env = "ARCANON_HUB_URL")]
+    pub hub_url: Option<String>,
+
+    /// API key for upload
+    #[arg(long, env = "ARCANON_API_KEY")]
+    pub api_key: Option<String>,
+
+    /// Project slug for grouping
+    #[arg(long, env = "ARCANON_PROJECT_SLUG")]
+    pub project_slug: Option<String>,
+
+    /// Write payload JSON to file instead of uploading
+    #[arg(long)]
+    pub output: Option<PathBuf>,
+
+    /// Parse and print payload, don't upload
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Comma-separated plugin filter
+    #[arg(long)]
+    pub plugins: Option<String>,
+
+    /// Glob patterns to exclude (repeatable)
+    #[arg(long, action = clap::ArgAction::Append)]
+    pub exclude: Vec<String>,
+
+    /// Override git remote detection
+    #[arg(long, env = "ARCANON_REPO_URL")]
+    pub repo_url: Option<String>,
+
+    /// Override branch detection
+    #[arg(long, env = "ARCANON_BRANCH")]
+    pub branch: Option<String>,
+
+    /// Override commit SHA detection
+    #[arg(long, env = "ARCANON_COMMIT_SHA")]
+    pub commit_sha: Option<String>,
+
+    /// Increase log verbosity (repeatable: -v info, -vv debug, -vvv trace)
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+}
+
+/// Initialize tracing based on verbosity level
+fn init_tracing(verbose: u8) {
+    let level = match verbose {
+        0 => tracing::Level::WARN,
+        1 => tracing::Level::INFO,
+        2 => tracing::Level::DEBUG,
+        _ => tracing::Level::TRACE,
+    };
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_writer(std::io::stderr)
+        .init();
+}
+
 fn main() {
-    println!("arcanon-scanner");
+    let cli = Cli::parse();
+
+    // Initialize logging
+    init_tracing(cli.verbose);
+
+    // Load config file (.arcanon.toml)
+    let file_cfg = config::load_file_config(&cli.path);
+
+    // Apply precedence: CLI flag > env var > .arcanon.toml > default
+    let _hub_url = cli.hub_url.or_else(|| file_cfg.scanner.hub_url);
+    let _project_slug = cli.project_slug.or_else(|| file_cfg.scanner.project_slug);
+    let mut exclude = cli.exclude.clone();
+    exclude.extend(file_cfg.scanner.exclude.paths.unwrap_or_default());
+
+    // Log startup
+    info!("arcanon-scanner starting, scanning: {}", cli.path.display());
+
+    // Log output destination if specified
+    if let Some(ref p) = cli.output {
+        info!("Output will be written to: {}", p.display());
+    }
+
+    // Load plugins
+    let _plugins = plugin::default_plugins();
+
+    // Print stub summary to stdout if dry_run
+    if cli.dry_run {
+        println!("{{}}");
+    }
+
+    // Exit 0 on success
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_path() {
+        let cli = Cli::try_parse_from(["arcanon-scanner"]).unwrap();
+        assert_eq!(cli.path.to_str().unwrap(), ".");
+    }
+
+    #[test]
+    fn test_hub_url_flag() {
+        let cli = Cli::try_parse_from(["arcanon-scanner", "--hub-url", "https://hub.arcanon.dev"])
+            .unwrap();
+        assert_eq!(cli.hub_url.as_deref(), Some("https://hub.arcanon.dev"));
+    }
+
+    #[test]
+    fn test_output_flag() {
+        let cli = Cli::try_parse_from(["arcanon-scanner", "--output", "result.json"]).unwrap();
+        assert!(cli.output.is_some());
+    }
+
+    #[test]
+    fn test_dry_run_flag() {
+        let cli = Cli::try_parse_from(["arcanon-scanner", "--dry-run"]).unwrap();
+        assert!(cli.dry_run);
+    }
+
+    #[test]
+    fn test_verbosity_count() {
+        let cli = Cli::try_parse_from(["arcanon-scanner", "-vvv"]).unwrap();
+        assert_eq!(cli.verbose, 3);
+    }
+
+    #[test]
+    fn test_plugins_flag() {
+        let cli =
+            Cli::try_parse_from(["arcanon-scanner", "--plugins", "openapi,typescript"]).unwrap();
+        assert_eq!(cli.plugins.as_deref(), Some("openapi,typescript"));
+    }
+
+    #[test]
+    fn test_exclude_repeatable() {
+        let cli = Cli::try_parse_from([
+            "arcanon-scanner",
+            "--exclude",
+            "*.log",
+            "--exclude",
+            "vendor/**",
+        ])
+        .unwrap();
+        assert_eq!(cli.exclude.len(), 2);
+        assert!(cli.exclude.contains(&"*.log".to_string()));
+        assert!(cli.exclude.contains(&"vendor/**".to_string()));
+    }
+
+    #[test]
+    fn test_git_overrides() {
+        let cli = Cli::try_parse_from([
+            "arcanon-scanner",
+            "--repo-url",
+            "https://github.com/example/repo",
+            "--branch",
+            "main",
+            "--commit-sha",
+            "abc123",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.repo_url.as_deref(),
+            Some("https://github.com/example/repo")
+        );
+        assert_eq!(cli.branch.as_deref(), Some("main"));
+        assert_eq!(cli.commit_sha.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn test_invalid_flag_returns_err() {
+        let result = Cli::try_parse_from(["arcanon-scanner", "--nonexistent-flag"]);
+        assert!(result.is_err());
+    }
 }
