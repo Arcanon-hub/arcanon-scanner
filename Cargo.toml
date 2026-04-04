@@ -1,0 +1,60 @@
+[package]
+name = "arcanon-scanner"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Static service topology scanner"
+license = "MIT"
+
+[[bin]]
+name = "arcanon-scanner"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4.6", features = ["derive", "env"] }
+
+# Git context
+gix = "0.81"
+
+# AST parsing — pin grammar crates to prevent ABI split (PITFALLS.md Pitfall 1)
+tree-sitter = "0.26.8"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-python = "0.25.0"
+tree-sitter-go = "0.25.0"
+tree-sitter-java = "0.23.5"
+tree-sitter-c-sharp = "0.23.1"
+tree-sitter-rust = "0.24.2"
+tree-sitter-ruby = "0.23.1"
+
+# File walking
+ignore = "0.4.25"
+globset = "0.4.18"
+
+# Serialization
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+toml = "1.1.2"
+serde_yaml_bw = "2.5.4"  # replaces deprecated serde_yaml (PITFALLS.md Pitfall 2)
+
+# HTTP upload (rustls only — no OpenSSL, musl-safe)
+reqwest = { version = "0.13", features = ["json"] }
+
+# Async runtime (reqwest only — NOT for plugins; plugins use rayon)
+tokio = { version = "1.51", features = ["rt-multi-thread", "macros"] }
+
+# CPU-bound parallelism for plugin execution
+rayon = "1.11.0"
+
+# Error handling
+anyhow = "1.0.102"
+
+# Logging
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[profile.release]
+opt-level = "z"       # size-optimized (smaller than opt-level = 3)
+lto = "fat"           # full LTO across all crates (most effective for binary size)
+codegen-units = 1     # single codegen unit enables maximum LTO effectiveness
+strip = "symbols"     # strip debug symbols explicitly (not strip = true shorthand)
