@@ -96,7 +96,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -104,7 +104,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Infrastructure | 3/3 | Complete | 2026-04-04 |
 | 3. Pipeline and Config Plugins | 5/5 | Complete | 2026-04-04 |
 | 4. Language Plugins and Hardening | 8/8 | Complete | 2026-04-04 |
-| 5. Pattern Engine | 1/5 | In Progress|  |
+| 5. Pattern Engine | 5/5 | Complete | 2026-04-05 |
+| 6. Library Resolution | 0/TBD | Not started | - |
 
 ### Phase 5: Pattern Engine
 **Goal**: Scanner fetches detection patterns from https://patterns.arcanon.dev/v1/patterns.json at startup, caches locally, merges with .arcanon.toml overrides, and applies them alongside compiled plugins — so new library detections never require a scanner release
@@ -124,3 +125,16 @@ Plans:
 - [ ] 05-03-PLAN.md — Strip compiled connection detection from all 7 language plugins (routes only remain)
 - [ ] 05-04-PLAN.md — Wire pattern engine into scanner.rs pipeline + payload metadata (pattern_version, pattern_source)
 - [ ] 05-05-PLAN.md — Integration tests: 14 tests covering all PTRN requirements
+
+### Phase 6: Library Resolution
+**Goal**: Scanner auto-discovers custom/internal connection libraries by running the pattern engine on installed package source files — zero config required, just install your dependencies before scanning
+**Depends on**: Phase 5
+**Requirements**: LRES-01, LRES-02, LRES-03, LRES-04, LRES-05, LRES-06
+**Success Criteria** (what must be TRUE):
+  1. Scanner finds Python venv and scans `edgeworks_sdk` source → detects it wraps httpx → reports connection with `extraction_method: "library_resolution:edgeworks_sdk→httpx"`
+  2. Scanner finds `node_modules/@acme/rpc` → detects it wraps axios → reports connection
+  3. For Go/Rust, scanner reads lock file transitive deps → detects `acme-rpc` depends on `tonic` → reports gRPC connection
+  4. Library scan results are cached per-scan (same library imported in 10 files = 1 scan)
+  5. Missing environment logs info and continues with CDN patterns only (no crash)
+  6. `arcanon --dry-run` on a repo with installed custom SDK produces ConnectionInfo findings
+**Plans**: TBD
