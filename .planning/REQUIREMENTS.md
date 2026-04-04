@@ -7,17 +7,17 @@
 
 ### CLI & Configuration
 
-- [ ] **CLI-01**: User can run `arcanon-scanner [PATH]` with sensible defaults and no config file required
-- [ ] **CLI-02**: User can configure scanner via `.arcanon.toml` with precedence: CLI flags > env vars > config file > defaults
-- [ ] **CLI-03**: User can pass `--hub-url`, `--api-key`, `--project-slug` via flags or env vars (ARCANON_HUB_URL, ARCANON_API_KEY, ARCANON_PROJECT_SLUG)
-- [ ] **CLI-04**: User can write payload to file with `--output <FILE>` instead of uploading
-- [ ] **CLI-05**: User can inspect payload without side effects using `--dry-run`
-- [ ] **CLI-06**: User can increase log verbosity with `-v` (info), `-vv` (debug), `-vvv` (trace)
-- [ ] **CLI-07**: User can print version with `--version`
-- [ ] **CLI-08**: User can filter plugins with `--plugins <LIST>` (comma-separated)
-- [ ] **CLI-09**: User can add exclude patterns with `--exclude <GLOB>` (repeatable)
-- [ ] **CLI-10**: User can override git detection with `--repo-url`, `--branch`, `--commit-sha`
-- [ ] **CLI-11**: Scanner exits 0 on success, 1 on upload failure after retries, 2 on invalid arguments
+- [x] **CLI-01**: User can run `arcanon-scanner [PATH]` with sensible defaults and no config file required
+- [x] **CLI-02**: User can configure scanner via `.arcanon.toml` with precedence: CLI flags > env vars > config file > defaults
+- [x] **CLI-03**: User can pass `--hub-url`, `--api-key`, `--project-slug` via flags or env vars (ARCANON_HUB_URL, ARCANON_API_KEY, ARCANON_PROJECT_SLUG)
+- [x] **CLI-04**: User can write payload to file with `--output <FILE>` instead of uploading
+- [x] **CLI-05**: User can inspect payload without side effects using `--dry-run`
+- [x] **CLI-06**: User can increase log verbosity with `-v` (info), `-vv` (debug), `-vvv` (trace)
+- [x] **CLI-07**: User can print version with `--version`
+- [x] **CLI-08**: User can filter plugins with `--plugins <LIST>` (comma-separated)
+- [x] **CLI-09**: User can add exclude patterns with `--exclude <GLOB>` (repeatable)
+- [x] **CLI-10**: User can override git detection with `--repo-url`, `--branch`, `--commit-sha`
+- [x] **CLI-11**: Scanner exits 0 on success, 1 on upload failure after retries, 2 on invalid arguments
 
 ### File Discovery
 
@@ -157,17 +157,17 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLI-01 | Phase 1 | Pending |
-| CLI-02 | Phase 1 | Pending |
-| CLI-03 | Phase 1 | Pending |
-| CLI-04 | Phase 1 | Pending |
-| CLI-05 | Phase 1 | Pending |
-| CLI-06 | Phase 1 | Pending |
-| CLI-07 | Phase 1 | Pending |
-| CLI-08 | Phase 1 | Pending |
-| CLI-09 | Phase 1 | Pending |
-| CLI-10 | Phase 1 | Pending |
-| CLI-11 | Phase 1 | Pending |
+| CLI-01 | Phase 1 | Complete |
+| CLI-02 | Phase 1 | Complete |
+| CLI-03 | Phase 1 | Complete |
+| CLI-04 | Phase 1 | Complete |
+| CLI-05 | Phase 1 | Complete |
+| CLI-06 | Phase 1 | Complete |
+| CLI-07 | Phase 1 | Complete |
+| CLI-08 | Phase 1 | Complete |
+| CLI-09 | Phase 1 | Complete |
+| CLI-10 | Phase 1 | Complete |
+| CLI-11 | Phase 1 | Complete |
 | BLDG-01 | Phase 1 | Pending |
 | BLDG-02 | Phase 1 | Pending |
 | BLDG-03 | Phase 1 | Pending |
