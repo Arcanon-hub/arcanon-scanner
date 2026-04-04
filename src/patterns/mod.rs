@@ -303,6 +303,67 @@ impl PatternRegistry {
             ..Default::default()
         }
     }
+
+    /// Apply user-defined pattern overrides from .arcanon.toml [[patterns]] (D-11).
+    /// User pattern with same ID as a remote pattern replaces it entirely.
+    /// New IDs are added to the set.
+    pub fn with_overrides(mut self, overrides: &[crate::config::PatternOverride]) -> Self {
+        for ov in overrides {
+            // Convert PatternOverride → Pattern
+            let converted = Pattern {
+                id: ov.id.clone(),
+                name: ov.name.clone(),
+                description: ov.description.clone(),
+                languages: ov.languages.clone(),
+                file_patterns: ov.file_patterns.clone(),
+                import_gate: ov.import_gate.clone(),
+                detections: ov
+                    .detections
+                    .iter()
+                    .map(|d| {
+                        // Parse confidence: "high" → PatternConfidence::High
+                        let confidence = match d.confidence.to_lowercase().as_str() {
+                            "high" => PatternConfidence::High,
+                            "medium" => PatternConfidence::Medium,
+                            "low" => PatternConfidence::Low,
+                            _ => PatternConfidence::Medium, // graceful default
+                        };
+
+                        // Parse target_extraction same as Deserialize impl
+                        let target_extraction = match d.target_extraction.as_str() {
+                            "none" => TargetExtraction::None,
+                            "first_string_arg" => TargetExtraction::FirstStringArg,
+                            "url_hostname" => TargetExtraction::UrlHostname,
+                            other if other.starts_with("named_arg:") => {
+                                let key = other.strip_prefix("named_arg:").unwrap_or("").to_string();
+                                TargetExtraction::NamedArg(key)
+                            }
+                            _ => TargetExtraction::None, // graceful unknown
+                        };
+
+                        Detection {
+                            match_str: d.match_str.clone(),
+                            kind: d.kind.clone(),
+                            protocol: d.protocol.clone(),
+                            confidence,
+                            target_extraction,
+                        }
+                    })
+                    .collect(),
+            };
+            // Remove existing pattern with same ID
+            self.patterns.retain(|p| p.id != ov.id);
+            // Add user pattern
+            self.patterns.push(converted);
+        }
+        self
+    }
+
+    /// Remove disabled patterns by ID (D-12).
+    pub fn with_disabled(mut self, disabled: &[String]) -> Self {
+        self.patterns.retain(|p| !disabled.contains(&p.id));
+        self
+    }
 }
 
 /// Map pattern confidence to crate confidence

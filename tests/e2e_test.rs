@@ -26,10 +26,15 @@ fn e2e_scan_fixture_repo_produces_valid_payload() {
         exclude_patterns: vec![],
         service_overrides: HashMap::new(),
         git_overrides: arcanon_scanner::core::scanner::GitOverrides::default(),
+        user_pattern_overrides: vec![],
+        disabled_patterns: vec![],
     };
 
-    let payload = arcanon_scanner::core::scanner::run(&scan_config)
-        .expect("Scanner should not fail on valid fixture directory");
+    let payload = {
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+        rt.block_on(arcanon_scanner::core::scanner::run(&scan_config))
+            .expect("Scanner should not fail on valid fixture directory")
+    };
 
     // Debug: print what was detected
     eprintln!("Services detected: {}", payload.findings.services.len());

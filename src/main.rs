@@ -7,6 +7,7 @@ mod config;
 mod core;
 mod discovery;
 mod git;
+mod patterns;
 mod plugin;
 mod types;
 mod upload;
@@ -131,10 +132,21 @@ fn main() {
             branch: cli.branch.clone(),
             commit_sha: cli.commit_sha.clone(),
         },
+        user_pattern_overrides: file_cfg.user_patterns,
+        disabled_patterns: file_cfg.scanner.patterns.disabled,
+    };
+
+    // Create tokio runtime for async scanner
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Failed to create tokio runtime: {}", e);
+            std::process::exit(1);
+        }
     };
 
     // Run the scanner
-    match core::scanner::run(&scanner_config) {
+    match rt.block_on(core::scanner::run(&scanner_config)) {
         Ok(payload) => {
             if scanner_config.dry_run {
                 // --dry-run: print payload to stdout and exit 0
@@ -170,19 +182,10 @@ fn main() {
                 }
             }
 
-            // Default: upload to hub
+            // Default: upload to hub using the same runtime
             let upload_config = upload::UploadConfig {
                 hub_url: scanner_config.hub_url.clone(),
                 api_key: scanner_config.api_key.clone(),
-            };
-
-            // Create tokio runtime for async upload
-            let rt = match tokio::runtime::Runtime::new() {
-                Ok(rt) => rt,
-                Err(e) => {
-                    eprintln!("Failed to create tokio runtime: {}", e);
-                    std::process::exit(1);
-                }
             };
 
             match rt.block_on(upload::upload(&payload, &upload_config)) {

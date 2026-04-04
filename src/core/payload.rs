@@ -28,6 +28,8 @@ pub struct ScanMetadata {
     pub completed_at: String,
     pub files_scanned: usize,
     pub project_slug: String,
+    pub pattern_version: String,
+    pub pattern_source: String,
 }
 
 /// All findings from the scan.
@@ -119,6 +121,8 @@ fn confidence_str(c: &Confidence) -> String {
 /// - `started_at`: RFC3339 timestamp when scan started
 /// - `completed_at`: RFC3339 timestamp when scan completed
 /// - `files_scanned`: Count of files processed during scan
+/// - `pattern_version`: Version string from PatternFile, or "" when no patterns
+/// - `pattern_source`: "remote", "cache", or "none" matching PatternSource
 #[allow(clippy::too_many_arguments)]
 pub fn assemble(
     merged: MergedResult,
@@ -130,6 +134,8 @@ pub fn assemble(
     started_at: String,
     completed_at: String,
     files_scanned: usize,
+    pattern_version: String,
+    pattern_source: String,
 ) -> ScanPayloadV1 {
     // Build endpoint lookup: service_name → endpoints
     let mut endpoints_by_service: HashMap<String, Vec<EndpointPayload>> = HashMap::new();
@@ -212,6 +218,8 @@ pub fn assemble(
             completed_at,
             files_scanned,
             project_slug,
+            pattern_version,
+            pattern_source,
         },
         findings: ScanFindings {
             services,
@@ -280,6 +288,8 @@ mod tests {
             "2026-04-04T10:00:00Z".to_string(),
             "2026-04-04T10:00:03Z".to_string(),
             247,
+            "".to_string(),
+            "none".to_string(),
         );
 
         // Verify top-level structure
@@ -334,6 +344,8 @@ mod tests {
             "2026-04-04T10:00:00Z".to_string(),
             "2026-04-04T10:00:01Z".to_string(),
             10,
+            "".to_string(),
+            "none".to_string(),
         );
 
         // Verify connection uses "source" and "target" field names
@@ -382,6 +394,8 @@ mod tests {
             "2026-04-04T10:00:00Z".to_string(),
             "2026-04-04T10:00:01Z".to_string(),
             10,
+            "".to_string(),
+            "none".to_string(),
         );
 
         assert_eq!(payload.findings.schemas.len(), 1);
@@ -422,6 +436,8 @@ mod tests {
             "2026-04-04T10:00:00Z".to_string(),
             "2026-04-04T10:00:01Z".to_string(),
             5,
+            "".to_string(),
+            "none".to_string(),
         );
 
         // Should serialize to valid JSON
@@ -465,6 +481,8 @@ mod tests {
             "2026-04-04T10:00:00Z".to_string(),
             "2026-04-04T10:00:01Z".to_string(),
             5,
+            "".to_string(),
+            "none".to_string(),
         );
 
         // Verify that service_type is serialized as "type" in JSON
@@ -530,6 +548,8 @@ mod tests {
             "2026-04-04T10:00:00Z".to_string(),
             "2026-04-04T10:00:01Z".to_string(),
             20,
+            "".to_string(),
+            "none".to_string(),
         );
 
         assert_eq!(payload.findings.services.len(), 2);

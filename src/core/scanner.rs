@@ -7,6 +7,7 @@
 use crate::core::{merger, payload, resolver};
 use crate::discovery::walk_repo;
 use crate::git::detect_git_context;
+use crate::patterns::{PatternRegistry, PatternSource};
 use crate::plugin::{default_plugins, ExtractionContext, FileContext, LanguagePlugin};
 use crate::types::ExtractionResult;
 use crate::vars::build_variable_store;
@@ -42,6 +43,10 @@ pub struct ScannerConfig {
     pub service_overrides: HashMap<String, merger::ServiceOverride>,
     /// Git overrides from CLI or env vars
     pub git_overrides: GitOverrides,
+    /// User-defined pattern overrides from .arcanon.toml [[patterns]]
+    pub user_pattern_overrides: Vec<crate::config::PatternOverride>,
+    /// Pattern IDs to disable from .arcanon.toml [scanner.patterns] disabled
+    pub disabled_patterns: Vec<String>,
 }
 
 /// Git-related CLI overrides.
@@ -55,19 +60,21 @@ pub struct GitOverrides {
 /// Run the scanner against a directory.
 ///
 /// This is the main orchestration function. It:
-/// 1. Records start time
-/// 2. Detects git context
-/// 3. Builds variable store
-/// 4. Discovers files
-/// 5. Filters plugins by name
-/// 6. Runs plugins in parallel with panic isolation (rayon + catch_unwind)
-/// 7. Merges results
-/// 8. Checks for empty findings (warning)
-/// 9. Applies service overrides
-/// 10. Resolves intra-repo connections
-/// 11. Assembles ScanPayloadV1
-/// 12. Returns payload
-pub fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
+/// 1. Loads pattern registry from remote or cache
+/// 2. Records start time
+/// 3. Detects git context
+/// 4. Builds variable store
+/// 5. Discovers files
+/// 6. Filters plugins by name
+/// 7. Runs plugins in parallel with panic isolation (rayon + catch_unwind)
+/// 8. Runs pattern engine for each language
+/// 9. Merges plugin + pattern results
+/// 10. Checks for empty findings (warning)
+/// 11. Applies service overrides
+/// 12. Resolves intra-repo connections
+/// 13. Assembles ScanPayloadV1
+/// 14. Returns payload
+pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     info!("Scanner starting: {}", config.root.display());
 
     // Step 1: Record start time
@@ -94,6 +101,21 @@ pub fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     let all_files_for_vars = walk_repo(&config.root, &config.exclude_patterns)?;
     let vars = build_variable_store(&config.root, &all_files_for_vars);
     debug!("variable store built");
+
+    // Step 3b: Load pattern registry (PTRN-01, PTRN-02, PTRN-03)
+    let pattern_registry = PatternRegistry::load(Some(&config.hub_url)).await;
+
+    // Apply user overrides (D-11: override by ID) and disabled filter (D-12)
+    let pattern_registry = pattern_registry
+        .with_overrides(&config.user_pattern_overrides)
+        .with_disabled(&config.disabled_patterns);
+
+    let pattern_version = pattern_registry.version.clone();
+    let pattern_source = match &pattern_registry.source {
+        PatternSource::Remote => "remote".to_string(),
+        PatternSource::Cache => "cache".to_string(),
+        PatternSource::None => "none".to_string(),
+    };
 
     // Step 4: Discover all files (converting PathBuf to FileContext)
     let all_files_paths = walk_repo(&config.root, &config.exclude_patterns)?;
@@ -180,23 +202,48 @@ pub fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
 
     info!("Plugin execution complete: {} results", all_results.len());
 
-    let results = all_results;
+    // Step 7: Run pattern engine for each language (PTRN-05, PTRN-06)
+    let language_map: &[(&str, &[&str])] = &[
+        ("typescript", &["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]),
+        ("python", &["**/*.py"]),
+        ("go", &["**/*.go"]),
+        ("java", &["**/*.java"]),
+        ("csharp", &["**/*.cs"]),
+        ("rust", &["**/*.rs"]),
+        ("ruby", &["**/*.rb"]),
+    ];
 
-    // Step 7: Merge all results
+    let mut pattern_results: Vec<ExtractionResult> = Vec::new();
+    for (language, patterns) in language_map {
+        let lang_files = filter_files_by_patterns(&all_files, patterns);
+        if !lang_files.is_empty() {
+            let result = pattern_registry.apply_all(&lang_files, language, &service_roots);
+            if !result.connections.is_empty() {
+                debug!("Pattern engine: {} {} connections", result.connections.len(), language);
+                pattern_results.push(result);
+            }
+        }
+    }
+
+    // Merge plugin results + pattern results together (PTRN-06)
+    let combined_results: Vec<ExtractionResult> = all_results.into_iter().chain(pattern_results).collect();
+    let results = combined_results;
+
+    // Step 8: Merge all results
     let mut merged = merger::merge(results);
     debug!("Merged into {} services", merged.services.len());
 
-    // Step 8: Check for empty findings (warning)
+    // Step 9: Check for empty findings (warning)
     merger::check_empty_findings(&merged);
 
-    // Step 9: Apply service overrides
+    // Step 10: Apply service overrides
     merger::apply_service_overrides(&mut merged, &config.service_overrides);
 
-    // Step 10: Resolve intra-repo connections
+    // Step 11: Resolve intra-repo connections
     let merged = resolver::resolve(merged);
     debug!("Resolved connections");
 
-    // Step 11: Record end time and assemble payload
+    // Step 12: Record end time and assemble payload
     let completed_at = now_rfc3339();
     let payload = payload::assemble(
         merged,
@@ -208,6 +255,8 @@ pub fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
         started_at,
         completed_at,
         all_files.len(),
+        pattern_version,
+        pattern_source,
     );
 
     info!(
