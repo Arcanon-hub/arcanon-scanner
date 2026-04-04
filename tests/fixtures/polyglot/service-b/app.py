@@ -11,6 +11,5 @@ async def list_items():
 
 @app.post("/items")
 async def create_item():
-    async with httpx.AsyncClient() as client:
-        resp = await client.get("http://service-a/users")
+    resp = await httpx.get("http://service-a/users")
     return {}

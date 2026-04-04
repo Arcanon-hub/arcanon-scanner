@@ -182,10 +182,10 @@ fn detect_frameworks(ctx: &ExtractionContext) -> FrameworkSet {
 fn extract_express_routes(
     result: &mut ExtractionResult,
     lang: &Language,
-    file_content: &str,
-    relative_path: &str,
+    file: &crate::plugin::FileContext,
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
+    let file_content = &*file.content;
     let mut parser = Parser::new();
     if parser.set_language(lang).is_err() {
         return;
@@ -248,10 +248,9 @@ fn extract_express_routes(
             continue;
         }
 
-        let service_name =
-            scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
-                .unwrap_or("")
-                .to_string();
+        let service_name = scope_to_service(&file.path, service_roots)
+            .unwrap_or("")
+            .to_string();
 
         let _evidence = format!("{}.{}('{}', ...)", receiver, method, path);
 
@@ -271,14 +270,16 @@ fn extract_express_routes(
     }
 }
 
-/// Extract NestJS routes using two-phase extraction
+/// Extract NestJS routes using two-phase extraction (DETQ-05)
+/// Phase 1: Extract @Controller('/prefix') class decorator
+/// Phase 2: Extract @Get/@Post/etc method decorators and combine with prefix
 fn extract_nestjs_routes(
     result: &mut ExtractionResult,
     lang: &Language,
-    file_content: &str,
-    relative_path: &str,
+    file: &crate::plugin::FileContext,
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
+    let file_content = &*file.content;
     let mut parser = Parser::new();
     if parser.set_language(lang).is_err() {
         return;
@@ -289,61 +290,110 @@ fn extract_nestjs_routes(
         None => return,
     };
 
-    // Simplified query: detect @Get, @Post, etc. method decorators
-    // This matches @Get("/:id"), @Post(), etc.
-    let simple_decorator_query_str = r#"
+    // Extract @Controller prefix from class declarations
+    let controller_query_str = r#"
+(decorator
+  (call_expression
+    function: (identifier) @dec_name
+    arguments: (arguments (string) @prefix)))
+"#;
+
+    let mut controller_prefix = String::new();
+
+    if let Ok(controller_query) = Query::new(lang, controller_query_str) {
+        let mut cursor = QueryCursor::new();
+        let mut matches =
+            cursor.matches(&controller_query, tree.root_node(), file_content.as_bytes());
+        let capture_names = controller_query.capture_names();
+
+        // Find the @Controller decorator with its prefix
+        while let Some(m) = matches.next() {
+            let mut dec_name = String::new();
+            let mut prefix = String::new();
+
+            for capture in m.captures {
+                let capture_name = capture_names[capture.index as usize];
+                let node = capture.node;
+                let text = node
+                    .utf8_text(file_content.as_bytes())
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
+
+                match capture_name {
+                    "dec_name" => dec_name = text,
+                    "prefix" => prefix = text,
+                    _ => {}
+                }
+            }
+
+            if dec_name == "Controller" {
+                controller_prefix = prefix;
+                break;
+            }
+        }
+    }
+
+    // Phase 2: Extract method decorators
+    let method_decorator_query_str = r#"
 (decorator
   (call_expression
     function: (identifier) @http_dec
     arguments: (arguments (string)? @path_arg)))
 "#;
 
-    let simple_query = match Query::new(lang, simple_decorator_query_str) {
-        Ok(q) => q,
-        Err(_) => return,
-    };
+    if let Ok(method_query) = Query::new(lang, method_decorator_query_str) {
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&method_query, tree.root_node(), file_content.as_bytes());
+        let capture_names = method_query.capture_names();
 
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&simple_query, tree.root_node(), file_content.as_bytes());
+        let http_methods = ["Get", "Post", "Put", "Delete", "Patch"];
+        let service_name = scope_to_service(&file.path, service_roots)
+            .unwrap_or("")
+            .to_string();
 
-    let capture_names = simple_query.capture_names();
-    let http_methods = ["Get", "Post", "Put", "Delete", "Patch"];
+        while let Some(m) = matches.next() {
+            let mut http_dec = String::new();
+            let mut path_arg = String::new();
 
-    let service_name = scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
-        .unwrap_or("")
-        .to_string();
+            for capture in m.captures {
+                let capture_name = capture_names[capture.index as usize];
+                let node = capture.node;
+                let text = node
+                    .utf8_text(file_content.as_bytes())
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
 
-    while let Some(m) = matches.next() {
-        let mut http_dec = String::new();
-        let mut path_arg = String::new();
-
-        for capture in m.captures {
-            let capture_name = capture_names[capture.index as usize];
-            let node = capture.node;
-            let text = node
-                .utf8_text(file_content.as_bytes())
-                .unwrap_or("")
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_string();
-
-            match capture_name {
-                "http_dec" => http_dec = text,
-                "path_arg" => path_arg = text,
-                _ => {}
+                match capture_name {
+                    "http_dec" => http_dec = text,
+                    "path_arg" => path_arg = text,
+                    _ => {}
+                }
             }
-        }
 
-        if http_methods.contains(&http_dec.as_str()) {
-            result.endpoints.push(EndpointInfo {
-                service_name: service_name.clone(),
-                method: http_dec.to_uppercase(),
-                path: path_arg,
-                handler: None,
-                kind: "rest".to_string(),
-                confidence: Confidence::High,
-                extraction_method: "ast_nestjs".to_string(),
-            });
+            if http_methods.contains(&http_dec.as_str()) {
+                // Combine controller prefix with method path
+                let combined_path = if controller_prefix.is_empty() {
+                    path_arg
+                } else if path_arg.is_empty() {
+                    controller_prefix.clone()
+                } else {
+                    format!("{}{}", controller_prefix, path_arg)
+                };
+
+                result.endpoints.push(EndpointInfo {
+                    service_name: service_name.clone(),
+                    method: http_dec.to_uppercase(),
+                    path: combined_path,
+                    handler: None,
+                    kind: "rest".to_string(),
+                    confidence: Confidence::High,
+                    extraction_method: "ast_nestjs_two_phase".to_string(),
+                });
+            }
         }
     }
 }
@@ -352,10 +402,10 @@ fn extract_nestjs_routes(
 fn extract_http_clients(
     result: &mut ExtractionResult,
     lang: &Language,
-    file_content: &str,
-    relative_path: &str,
+    file: &crate::plugin::FileContext,
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
+    let file_content = &*file.content;
     let mut parser = Parser::new();
     if parser.set_language(lang).is_err() {
         return;
@@ -398,10 +448,9 @@ fn extract_http_clients(
         }
 
         if fn_name == "fetch" {
-            let service_name =
-                scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
-                    .unwrap_or("")
-                    .to_string();
+            let service_name = scope_to_service(&file.path, service_roots)
+                .unwrap_or("")
+                .to_string();
 
             let evidence = format!("fetch('{}')", url_arg);
             let truncated_evidence = if evidence.len() > 200 {
@@ -416,7 +465,7 @@ fn extract_http_clients(
                 protocol: "rest".to_string(),
                 method: None,
                 path: None,
-                source_file: format!("{}:{}", relative_path, line),
+                source_file: format!("{}:{}", file.relative_path, line),
                 confidence: Confidence::High,
                 extraction_method: "ast_fetch".to_string(),
                 evidence: Some(truncated_evidence),
@@ -429,10 +478,10 @@ fn extract_http_clients(
 fn extract_database_connections(
     result: &mut ExtractionResult,
     lang: &Language,
-    file_content: &str,
-    relative_path: &str,
+    file: &crate::plugin::FileContext,
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
+    let file_content = &*file.content;
     // Check for mongoose.connect() calls
     if file_content.contains("mongoose") || file_content.contains("from 'mongoose'") {
         let mut parser = Parser::new();
@@ -476,10 +525,9 @@ fn extract_database_connections(
             }
 
             if obj == "mongoose" && method == "connect" {
-                let service_name =
-                    scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
-                        .unwrap_or("")
-                        .to_string();
+                let service_name = scope_to_service(&file.path, service_roots)
+                    .unwrap_or("")
+                    .to_string();
 
                 let evidence = "mongoose.connect()".to_string();
 
@@ -489,7 +537,7 @@ fn extract_database_connections(
                     protocol: "mongodb".to_string(),
                     method: None,
                     path: None,
-                    source_file: format!("{}:{}", relative_path, line),
+                    source_file: format!("{}:{}", file.relative_path, line),
                     confidence: Confidence::High,
                     extraction_method: "ast_mongoose".to_string(),
                     evidence: Some(evidence),
@@ -503,10 +551,10 @@ fn extract_database_connections(
 fn extract_grpc_clients(
     result: &mut ExtractionResult,
     lang: &Language,
-    file_content: &str,
-    relative_path: &str,
+    file: &crate::plugin::FileContext,
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
+    let file_content = &*file.content;
     if !file_content.contains("_grpc") && !file_content.contains("_pb2_grpc") {
         return;
     }
@@ -550,10 +598,9 @@ fn extract_grpc_clients(
         }
 
         if ctor.ends_with("Client") {
-            let service_name =
-                scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
-                    .unwrap_or("")
-                    .to_string();
+            let service_name = scope_to_service(&file.path, service_roots)
+                .unwrap_or("")
+                .to_string();
 
             let target = ctor.strip_suffix("Client").unwrap_or(&ctor).to_string();
 
@@ -565,7 +612,7 @@ fn extract_grpc_clients(
                 protocol: "grpc".to_string(),
                 method: None,
                 path: None,
-                source_file: format!("{}:{}", relative_path, line),
+                source_file: format!("{}:{}", file.relative_path, line),
                 confidence: Confidence::High,
                 extraction_method: "ast_grpc".to_string(),
                 evidence: Some(evidence),
@@ -578,10 +625,10 @@ fn extract_grpc_clients(
 fn extract_mq_calls(
     result: &mut ExtractionResult,
     lang: &Language,
-    file_content: &str,
-    relative_path: &str,
+    file: &crate::plugin::FileContext,
     service_roots: &HashMap<std::path::PathBuf, String>,
 ) {
+    let file_content = &*file.content;
     if !file_content.contains("producer.send")
         && !file_content.contains("channel.publish")
         && !file_content.contains("publish")
@@ -635,10 +682,9 @@ fn extract_mq_calls(
         }
 
         if method == "send" && key == "topic" {
-            let service_name =
-                scope_to_service(&std::path::PathBuf::from(relative_path), service_roots)
-                    .unwrap_or("")
-                    .to_string();
+            let service_name = scope_to_service(&file.path, service_roots)
+                .unwrap_or("")
+                .to_string();
 
             let evidence = format!("producer.send({{ topic: '{}' }})", topic);
             let truncated_evidence = if evidence.len() > 200 {
@@ -653,7 +699,7 @@ fn extract_mq_calls(
                 protocol: "kafka".to_string(),
                 method: None,
                 path: Some(topic),
-                source_file: format!("{}:{}", relative_path, line),
+                source_file: format!("{}:{}", file.relative_path, line),
                 confidence: Confidence::High,
                 extraction_method: "ast_kafka".to_string(),
                 evidence: Some(truncated_evidence),
@@ -698,61 +744,25 @@ impl LanguagePlugin for TypeScriptPlugin {
             {
                 // Extract Express routes if framework detected
                 if frameworks.express {
-                    extract_express_routes(
-                        &mut result,
-                        &lang,
-                        &file.content,
-                        &file.relative_path,
-                        &ctx.service_roots,
-                    );
+                    extract_express_routes(&mut result, &lang, file, &ctx.service_roots);
                 }
 
                 // Extract NestJS routes if framework detected
                 if frameworks.nestjs {
-                    extract_nestjs_routes(
-                        &mut result,
-                        &lang,
-                        &file.content,
-                        &file.relative_path,
-                        &ctx.service_roots,
-                    );
+                    extract_nestjs_routes(&mut result, &lang, file, &ctx.service_roots);
                 }
 
                 // Extract HTTP clients (fetch, axios, got, etc.)
-                extract_http_clients(
-                    &mut result,
-                    &lang,
-                    &file.content,
-                    &file.relative_path,
-                    &ctx.service_roots,
-                );
+                extract_http_clients(&mut result, &lang, file, &ctx.service_roots);
 
                 // Extract database connections
-                extract_database_connections(
-                    &mut result,
-                    &lang,
-                    &file.content,
-                    &file.relative_path,
-                    &ctx.service_roots,
-                );
+                extract_database_connections(&mut result, &lang, file, &ctx.service_roots);
 
                 // Extract gRPC clients
-                extract_grpc_clients(
-                    &mut result,
-                    &lang,
-                    &file.content,
-                    &file.relative_path,
-                    &ctx.service_roots,
-                );
+                extract_grpc_clients(&mut result, &lang, file, &ctx.service_roots);
 
                 // Extract message queue calls
-                extract_mq_calls(
-                    &mut result,
-                    &lang,
-                    &file.content,
-                    &file.relative_path,
-                    &ctx.service_roots,
-                );
+                extract_mq_calls(&mut result, &lang, file, &ctx.service_roots);
             }
         }
 
