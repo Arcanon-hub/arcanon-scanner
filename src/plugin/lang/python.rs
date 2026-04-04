@@ -83,6 +83,52 @@ fn django_urlpatterns_query() -> &'static Query {
     })
 }
 
+/// Compile HTTP client query once via OnceLock.
+fn http_client_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        let src = r#"
+(call
+  function: (attribute
+    object: (identifier) @lib
+    attribute: (identifier) @method)
+  arguments: (argument_list (string) @url (_)*))
+"#;
+        let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
+        Query::new(&lang, src).expect("invalid http_client query")
+    })
+}
+
+/// Compile database client query once via OnceLock.
+fn db_client_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        let src = r#"
+(call
+  function: (attribute
+    object: (identifier) @lib
+    attribute: (identifier) @method)
+  arguments: (argument_list (string) @dsn (_)*))
+"#;
+        let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
+        Query::new(&lang, src).expect("invalid db_client query")
+    })
+}
+
+/// Compile gRPC stub instantiation query once via OnceLock.
+fn grpc_stub_query() -> &'static Query {
+    static QUERY: OnceLock<Query> = OnceLock::new();
+    QUERY.get_or_init(|| {
+        let src = r#"
+(call
+  function: (identifier) @stub
+  arguments: (argument_list (_)))
+"#;
+        let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
+        Query::new(&lang, src).expect("invalid grpc_stub query")
+    })
+}
+
 impl LanguagePlugin for PythonPlugin {
     fn name(&self) -> &str {
         "python"
@@ -181,7 +227,7 @@ fn extract_fastapi_flask_routes(
         let mut cursor = QueryCursor::new();
         let matches = cursor.matches(query, tree.root_node(), source_bytes);
 
-        // Use the StreamingIterator pattern - access trait method via use
+        // Use the StreamingIterator pattern
         use streaming_iterator::StreamingIterator;
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
         while let Some(m) = matches.next() {
@@ -301,48 +347,442 @@ fn extract_django_routes(
 }
 
 fn extract_http_clients(
-    _ctx: &ExtractionContext,
-    _source_files: &[&FileContext],
-    _parser: &mut Parser,
+    ctx: &ExtractionContext,
+    source_files: &[&FileContext],
+    parser: &mut Parser,
 ) -> Vec<ConnectionInfo> {
-    // TODO: Implement HTTP client detection
-    Vec::new()
+    let mut connections = Vec::new();
+    let http_libs = ["requests", "httpx", "aiohttp", "urllib"];
+    let http_methods = ["get", "post", "put", "delete", "patch"];
+    let query = http_client_query();
+
+    for file in source_files {
+        let source_bytes = file.content.as_bytes();
+        let content = &*file.content;
+
+        // Skip if no HTTP library import
+        if !http_libs.iter().any(|lib| content.contains(lib)) {
+            continue;
+        }
+
+        let tree = match parser.parse(source_bytes, None) {
+            Some(t) => t,
+            None => continue,
+        };
+
+        let mut cursor = QueryCursor::new();
+        use streaming_iterator::StreamingIterator;
+        let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
+
+        while let Some(m) = matches.next() {
+            let mut lib = "";
+            let mut method = "";
+            let mut url = "";
+
+            for capture in m.captures {
+                let name = query.capture_names()[capture.index as usize];
+                let text = capture
+                    .node
+                    .utf8_text(source_bytes)
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .trim_matches('\'');
+
+                match name {
+                    "lib" => lib = text,
+                    "method" => method = text,
+                    "url" => url = text,
+                    _ => {}
+                }
+            }
+
+            if http_libs.contains(&lib) && http_methods.contains(&method) && !url.is_empty() {
+                let source_service = scope_to_service(&file.path, &ctx.service_roots);
+                if source_service.is_none() {
+                    tracing::warn!("Unscoped Python file: {}", file.relative_path);
+                }
+
+                connections.push(ConnectionInfo {
+                    source_service: source_service.unwrap_or("").to_string(),
+                    target_name: url.to_string(),
+                    protocol: "rest".to_string(),
+                    method: Some(method.to_uppercase()),
+                    path: None,
+                    source_file: format!(
+                        "{}:{}",
+                        file.relative_path,
+                        m.captures
+                            .first()
+                            .map(|c| c.node.start_position().row + 1)
+                            .unwrap_or(0)
+                    ),
+                    confidence: Confidence::High,
+                    extraction_method: "python_http_client".to_string(),
+                    evidence: Some(url[..std::cmp::min(url.len(), 200)].to_string()),
+                });
+            }
+        }
+    }
+
+    connections
 }
 
 fn extract_db_clients(
-    _ctx: &ExtractionContext,
-    _source_files: &[&FileContext],
-    _parser: &mut Parser,
+    ctx: &ExtractionContext,
+    source_files: &[&FileContext],
+    parser: &mut Parser,
 ) -> Vec<ConnectionInfo> {
-    // TODO: Implement DB client detection
-    Vec::new()
+    let mut connections = Vec::new();
+    let query = db_client_query();
+
+    for file in source_files {
+        let source_bytes = file.content.as_bytes();
+        let content = &*file.content;
+
+        // Detect which DB libraries are imported
+        let (protocol, lib) = if content.contains("asyncpg") {
+            ("postgresql", "asyncpg")
+        } else if content.contains("psycopg2") {
+            ("postgresql", "psycopg2")
+        } else if content.contains("motor") {
+            ("mongodb", "motor")
+        } else if content.contains("redis") {
+            ("redis", "redis")
+        } else {
+            continue;
+        };
+
+        let tree = match parser.parse(source_bytes, None) {
+            Some(t) => t,
+            None => continue,
+        };
+
+        let mut cursor = QueryCursor::new();
+        use streaming_iterator::StreamingIterator;
+        let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
+
+        while let Some(m) = matches.next() {
+            let mut lib_name = "";
+            let mut dsn = "";
+
+            for capture in m.captures {
+                let name = query.capture_names()[capture.index as usize];
+                let text = capture
+                    .node
+                    .utf8_text(source_bytes)
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .trim_matches('\'');
+
+                match name {
+                    "lib" => lib_name = text,
+                    "dsn" => dsn = text,
+                    _ => {}
+                }
+            }
+
+            if lib_name == lib && !dsn.is_empty() {
+                let source_service = scope_to_service(&file.path, &ctx.service_roots);
+                if source_service.is_none() {
+                    tracing::warn!("Unscoped Python file: {}", file.relative_path);
+                }
+
+                connections.push(ConnectionInfo {
+                    source_service: source_service.unwrap_or("").to_string(),
+                    target_name: dsn.to_string(),
+                    protocol: protocol.to_string(),
+                    method: None,
+                    path: None,
+                    source_file: format!(
+                        "{}:{}",
+                        file.relative_path,
+                        m.captures
+                            .first()
+                            .map(|c| c.node.start_position().row + 1)
+                            .unwrap_or(0)
+                    ),
+                    confidence: Confidence::High,
+                    extraction_method: "python_db_client".to_string(),
+                    evidence: Some(dsn[..std::cmp::min(dsn.len(), 200)].to_string()),
+                });
+            }
+        }
+    }
+
+    connections
 }
 
 fn extract_mq_clients(
-    _ctx: &ExtractionContext,
-    _source_files: &[&FileContext],
+    ctx: &ExtractionContext,
+    source_files: &[&FileContext],
     _parser: &mut Parser,
 ) -> Vec<ConnectionInfo> {
-    // TODO: Implement MQ client detection
-    Vec::new()
+    let mut connections = Vec::new();
+
+    for file in source_files {
+        let content = &*file.content;
+
+        // Pika: channel.basic_publish(exchange, routing_key, ...)
+        if content.contains("pika") && content.contains("basic_publish") {
+            let source_service = scope_to_service(&file.path, &ctx.service_roots);
+            if source_service.is_none() {
+                tracing::warn!("Unscoped Python file: {}", file.relative_path);
+            }
+
+            // Extract routing key via simple text pattern (import-gated)
+            let lines: Vec<&str> = content.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                if line.contains("basic_publish") {
+                    if let Some(rest) = line.split("basic_publish").nth(1) {
+                        // Simple extraction: look for routing_key quoted
+                        if let Some(start) = rest.find('"') {
+                            if let Some(end) = rest[start + 1..].find('"') {
+                                let routing_key = &rest[start + 1..start + 1 + end];
+                                connections.push(ConnectionInfo {
+                                    source_service: source_service.unwrap_or("").to_string(),
+                                    target_name: "amqp_broker".to_string(),
+                                    protocol: "amqp".to_string(),
+                                    method: None,
+                                    path: Some(routing_key.to_string()),
+                                    source_file: format!("{}:{}", file.relative_path, i + 1),
+                                    confidence: Confidence::High,
+                                    extraction_method: "python_pika_client".to_string(),
+                                    evidence: Some(line.to_string()),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    connections
 }
 
 fn extract_industrial_protocol_clients(
-    _ctx: &ExtractionContext,
-    _source_files: &[&FileContext],
-    _parser: &mut Parser,
+    ctx: &ExtractionContext,
+    source_files: &[&FileContext],
+    parser: &mut Parser,
 ) -> Vec<ConnectionInfo> {
-    // TODO: Implement industrial protocol detection
-    Vec::new()
+    let mut connections = Vec::new();
+
+    for file in source_files {
+        let content = &*file.content;
+
+        // ModbusTcpClient from pymodbus
+        if (content.contains("from pymodbus") || content.contains("import pymodbus"))
+            && content.contains("ModbusTcpClient")
+        {
+            let source_service = scope_to_service(&file.path, &ctx.service_roots);
+            if source_service.is_none() {
+                tracing::warn!("Unscoped Python file: {}", file.relative_path);
+            }
+
+            let source_bytes = file.content.as_bytes();
+            let tree = match parser.parse(source_bytes, None) {
+                Some(t) => t,
+                None => continue,
+            };
+
+            let stub_query = grpc_stub_query();
+            let mut cursor = QueryCursor::new();
+            use streaming_iterator::StreamingIterator;
+            let mut matches = cursor.matches(stub_query, tree.root_node(), source_bytes);
+
+            while let Some(m) = matches.next() {
+                for capture in m.captures {
+                    let name = stub_query.capture_names()[capture.index as usize];
+                    if name == "stub" {
+                        let stub_name = capture
+                            .node
+                            .utf8_text(source_bytes)
+                            .unwrap_or("")
+                            .trim_matches('"')
+                            .trim_matches('\'');
+
+                        if stub_name == "ModbusTcpClient" {
+                            connections.push(ConnectionInfo {
+                                source_service: source_service.unwrap_or("").to_string(),
+                                target_name: "modbus_device".to_string(),
+                                protocol: "modbus".to_string(),
+                                method: None,
+                                path: None,
+                                source_file: format!(
+                                    "{}:{}",
+                                    file.relative_path,
+                                    capture.node.start_position().row + 1
+                                ),
+                                confidence: Confidence::High,
+                                extraction_method: "python_modbus_client".to_string(),
+                                evidence: Some(stub_name.to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // OPC UA (opcua/asyncua)
+        if (content.contains("import opcua") || content.contains("import asyncua"))
+            && content.contains("Client")
+        {
+            let source_service = scope_to_service(&file.path, &ctx.service_roots);
+            if source_service.is_none() {
+                tracing::warn!("Unscoped Python file: {}", file.relative_path);
+            }
+
+            connections.push(ConnectionInfo {
+                source_service: source_service.unwrap_or("").to_string(),
+                target_name: "opc_server".to_string(),
+                protocol: "opcua".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:1", file.relative_path),
+                confidence: Confidence::High,
+                extraction_method: "python_opcua_client".to_string(),
+                evidence: Some("OPC UA Client import detected".to_string()),
+            });
+        }
+
+        // BAC0 (BACnet)
+        if content.contains("import BAC0") && content.contains("BAC0.connect") {
+            let source_service = scope_to_service(&file.path, &ctx.service_roots);
+            if source_service.is_none() {
+                tracing::warn!("Unscoped Python file: {}", file.relative_path);
+            }
+
+            connections.push(ConnectionInfo {
+                source_service: source_service.unwrap_or("").to_string(),
+                target_name: "bacnet_network".to_string(),
+                protocol: "bacnet".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:1", file.relative_path),
+                confidence: Confidence::High,
+                extraction_method: "python_bacnet_client".to_string(),
+                evidence: Some("BAC0 BACnet import detected".to_string()),
+            });
+        }
+
+        // python-can (CAN bus)
+        if content.contains("import can") && content.contains("Bus") {
+            let source_service = scope_to_service(&file.path, &ctx.service_roots);
+            if source_service.is_none() {
+                tracing::warn!("Unscoped Python file: {}", file.relative_path);
+            }
+
+            connections.push(ConnectionInfo {
+                source_service: source_service.unwrap_or("").to_string(),
+                target_name: "can_network".to_string(),
+                protocol: "canbus".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:1", file.relative_path),
+                confidence: Confidence::High,
+                extraction_method: "python_can_client".to_string(),
+                evidence: Some("python-can Bus import detected".to_string()),
+            });
+        }
+
+        // hl7apy (HL7)
+        if (content.contains("import hl7apy") || content.contains("from hl7apy"))
+            && content.contains("Message")
+        {
+            let source_service = scope_to_service(&file.path, &ctx.service_roots);
+            if source_service.is_none() {
+                tracing::warn!("Unscoped Python file: {}", file.relative_path);
+            }
+
+            connections.push(ConnectionInfo {
+                source_service: source_service.unwrap_or("").to_string(),
+                target_name: "hl7_system".to_string(),
+                protocol: "hl7".to_string(),
+                method: None,
+                path: None,
+                source_file: format!("{}:1", file.relative_path),
+                confidence: Confidence::High,
+                extraction_method: "python_hl7_client".to_string(),
+                evidence: Some("hl7apy Message import detected".to_string()),
+            });
+        }
+    }
+
+    connections
 }
 
 fn extract_grpc_clients(
-    _ctx: &ExtractionContext,
-    _source_files: &[&FileContext],
-    _parser: &mut Parser,
+    ctx: &ExtractionContext,
+    source_files: &[&FileContext],
+    parser: &mut Parser,
 ) -> Vec<ConnectionInfo> {
-    // TODO: Implement gRPC client detection
-    Vec::new()
+    let mut connections = Vec::new();
+    let query = grpc_stub_query();
+
+    for file in source_files {
+        let content = &*file.content;
+
+        // Import gate: file content contains _pb2_grpc
+        if !content.contains("_pb2_grpc") {
+            continue;
+        }
+
+        let source_service = scope_to_service(&file.path, &ctx.service_roots);
+        if source_service.is_none() {
+            tracing::warn!("Unscoped Python file: {}", file.relative_path);
+        }
+
+        let source_bytes = file.content.as_bytes();
+        let tree = match parser.parse(source_bytes, None) {
+            Some(t) => t,
+            None => continue,
+        };
+
+        let mut cursor = QueryCursor::new();
+        use streaming_iterator::StreamingIterator;
+        let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
+
+        while let Some(m) = matches.next() {
+            let mut stub_name = "";
+
+            for capture in m.captures {
+                let name = query.capture_names()[capture.index as usize];
+                if name == "stub" {
+                    stub_name = capture
+                        .node
+                        .utf8_text(source_bytes)
+                        .unwrap_or("")
+                        .trim_matches('"')
+                        .trim_matches('\'');
+                }
+            }
+
+            // Filter: stub name ends with "Stub"
+            if stub_name.ends_with("Stub") {
+                let service_name = stub_name.trim_end_matches("Stub").to_string();
+                connections.push(ConnectionInfo {
+                    source_service: source_service.unwrap_or("").to_string(),
+                    target_name: service_name,
+                    protocol: "grpc".to_string(),
+                    method: None,
+                    path: None,
+                    source_file: format!(
+                        "{}:{}",
+                        file.relative_path,
+                        m.captures
+                            .first()
+                            .map(|c| c.node.start_position().row + 1)
+                            .unwrap_or(0)
+                    ),
+                    confidence: Confidence::High,
+                    extraction_method: "python_grpc_stub".to_string(),
+                    evidence: Some(stub_name.to_string()),
+                });
+            }
+        }
+    }
+
+    connections
 }
 
 #[cfg(test)]
@@ -420,5 +860,85 @@ mod tests {
 
         // No framework marker in requirements/pyproject, so routes should not be detected
         assert_eq!(result.endpoints.len(), 0);
+    }
+
+    #[test]
+    fn test_requests_http_client_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "requests==2.31.0\n"),
+            make_file_context(
+                "client.py",
+                "import requests\nresponse = requests.post('http://api.example.com/data')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert_eq!(result.connections.len(), 1);
+        let conn = &result.connections[0];
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.target_name, "http://api.example.com/data");
+    }
+
+    #[test]
+    fn test_asyncpg_database_client_detection() {
+        let files = vec![
+            make_file_context(
+                "requirements.txt",
+                "asyncpg==0.28.0\n",
+            ),
+            make_file_context(
+                "db.py",
+                "import asyncpg\nconn = await asyncpg.connect('postgresql://user:pass@localhost/db')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result
+            .connections
+            .iter()
+            .any(|c| c.protocol == "postgresql"));
+    }
+
+    #[test]
+    fn test_modbus_industrial_protocol_detection() {
+        let files = vec![
+            make_file_context(
+                "requirements.txt",
+                "pymodbus==3.0.0\n",
+            ),
+            make_file_context(
+                "ics.py",
+                "from pymodbus.client.sync import ModbusTcpClient\nclient = ModbusTcpClient(host='192.168.1.1')\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result.connections.iter().any(|c| c.protocol == "modbus"));
+    }
+
+    #[test]
+    fn test_grpc_stub_client_detection() {
+        let files = vec![
+            make_file_context("requirements.txt", "grpcio==1.50.0\n"),
+            make_file_context(
+                "grpc_client.py",
+                "from order_pb2_grpc import OrderServiceStub\nstub = OrderServiceStub(channel)\n",
+            ),
+        ];
+
+        let ctx = make_extraction_context(files);
+        let plugin = PythonPlugin;
+        let result = plugin.extract(&ctx);
+
+        assert!(result.connections.iter().any(|c| c.protocol == "grpc"));
     }
 }
