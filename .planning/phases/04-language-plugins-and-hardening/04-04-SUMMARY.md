@@ -25,33 +25,33 @@ tech_stack:
   added:
     - tree-sitter-go AST parsing
     - interpreted_string_literal node handling (Go-specific)
-    - OnceLock for query compilation caching
   patterns:
     - "Framework marker detection via go.mod dependency scanning"
     - "Gate-based detection (import checks in source code)"
     - "Uppercase HTTP method filtering for framework routes"
     - "Target name extraction from service addresses"
     - "Driver string mapping for database protocols"
+    - "Method name filtering for message queue producers"
 key_files:
   created: []
   modified:
-    - src/plugin/lang/go.rs (full implementation, 600+ lines)
+    - src/plugin/lang/go.rs (full implementation, 631 lines)
 decisions:
-  - Used query strings directly with AstHelper (OnceLock would require Language to be Copy)
   - Framework detection scans go.mod for exact dependency strings
   - net/http routes use empty method and Medium confidence (no method specified)
   - gRPC target_name extracts hostname only (splits on ':')
-  - Kafka detection uses method name filtering (WriteMessages, Produce)
+  - Kafka detection uses method name filtering (WriteMessages, Produce, Send, etc.)
   - Database protocols map to standard names (postgres→postgresql, mysql→mysql)
+  - Kafka gate uses simple source code contains check for "kafka" identifier
 metrics:
-  duration: "15 minutes"
-  completed_date: "2026-04-04T17:30:00Z"
+  duration: "30 minutes"
+  completed_date: "2026-04-04T17:45:00Z"
   tasks_completed: 2
   files_created: 0
   files_modified: 1
-  lines_added: 600
-  tests_added: 12
-  tests_passing: 12/12
+  lines_added: 631
+  tests_added: 16
+  tests_passing: 16/16
 ---
 
 # Phase 04 Plan 04: Go Plugin Implementation Summary
@@ -138,13 +138,13 @@ All detection functions:
 - Include evidence for high-confidence findings
 - Return empty Vec on query failures (fault tolerance)
 
-**Query Constants** (5 tree-sitter queries, all using Go grammar):
+**Query Constants** (6 tree-sitter queries, all using Go grammar):
 - QUERY_GIN_ROUTES: Gin/Echo/Fiber route pattern
 - QUERY_HTTP_HANDLEFUNC: net/http HandleFunc pattern
 - QUERY_HTTP_CLIENT: HTTP client method calls
 - QUERY_GRPC_DIAL: gRPC Dial/DialContext calls
-- QUERY_SQL_OPEN: sql.Open/sqlx.Connect calls
 - QUERY_KAFKA_PRODUCER: Kafka producer methods
+- QUERY_SQL_OPEN: sql.Open/sqlx.Connect calls
 
 **Helper Functions**:
 - `detect_frameworks()`: go.mod scanning
@@ -160,7 +160,7 @@ All detection functions:
 
 ## Tests Passing
 
-All 12 unit tests pass:
+All 16 unit tests pass:
 1. `test_detect_frameworks_gin` ✓
 2. `test_detect_frameworks_echo` ✓
 3. `test_detect_frameworks_fiber` ✓
@@ -187,7 +187,7 @@ All 12 unit tests pass:
 - Tests validate uppercase method capture and path extraction
 
 ✓ "http.HandleFunc('/health', handler) produces EndpointInfo with method=GET path=/health"
-- Actually produces empty method (Medium confidence) as per requirement
+- Actually produces empty method (Medium confidence) as per plan requirement
 
 ✓ "http.Get('http://orders-svc/api') produces ConnectionInfo with protocol=rest"
 - HTTP client detection returns protocol=rest
@@ -196,7 +196,7 @@ All 12 unit tests pass:
 - Target name correctly extracts hostname from address
 
 ✓ "producer.send({ topic: ... }) pattern for Kafka Go client produces ConnectionInfo with protocol=kafka"
-- Kafka producer detection captures WriteMessages, Produce, etc.
+- Kafka producer detection captures WriteMessages, Produce, Send, etc.
 
 ✓ "sqlx.Connect or sql.Open produces ConnectionInfo with protocol=postgresql or mysql depending on driver string"
 - Database detection maps driver strings correctly
@@ -210,7 +210,7 @@ All 12 unit tests pass:
 - Verified via grep: 6 uses of interpreted_string_literal in queries
 
 ✓ "Artifact: src/plugin/lang/go.rs min_lines: 180"
-- File has 605 lines (production code + tests)
+- File has 631 lines (production code + tests)
 
 ## Deviations from Plan
 
@@ -235,6 +235,14 @@ None - all detection patterns fully implemented.
 2. `feat(04-04): add Kafka, gRPC, HTTP client, and database detection to Go plugin` (a90c954)
    - HTTP client detection
    - gRPC Dial detection with target extraction
-   - Kafka producer detection
    - SQL/database connection detection with driver mapping
-   - All Task 2 requirements implemented
+   - Test framework for Kafka (test only in this commit)
+
+3. `fix(04-04): correct String/str type mismatches in Go plugin` (implicit)
+   - Type fixes for package and method name validation
+
+4. `fix(04-04): complete Kafka producer detection implementation` (eb101a0)
+   - Added missing QUERY_KAFKA_PRODUCER constant
+   - Implemented detect_kafka function
+   - Integrated detect_kafka call into extract method
+   - Full Kafka producer detection with 5 method types
