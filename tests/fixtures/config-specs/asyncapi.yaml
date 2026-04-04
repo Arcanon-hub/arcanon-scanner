@@ -1,0 +1,22 @@
+asyncapi: "2.6.0"
+info:
+  title: User Events
+  version: "1.0.0"
+channels:
+  user/created:
+    subscribe:
+      operationId: onUserCreated
+      message:
+        name: UserCreatedEvent
+        payload:
+          type: object
+          properties:
+            userId:
+              type: string
+            email:
+              type: string
+  user/deleted:
+    publish:
+      operationId: deleteUser
+      message:
+        name: UserDeletedEvent
