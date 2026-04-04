@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-musl
+          components: clippy, rustfmt
+
+      - name: Install musl linker
+        run: sudo apt-get install -y musl-tools
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Lint
+        run: cargo clippy -- -D warnings
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Test
+        run: cargo test
+
+      - name: Build musl release binary
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Check tree-sitter ABI — no duplicates allowed
+        run: |
+          if cargo tree --duplicates | grep tree-sitter; then
+            echo "ERROR: duplicate tree-sitter versions detected — ABI mismatch risk"
+            exit 1
+          fi
+          echo "OK: no tree-sitter version duplicates"
+
+      - name: Assert binary size under 15MB
+        run: |
+          BINARY="target/x86_64-unknown-linux-musl/release/arcanon-scanner"
+          SIZE=$(wc -c < "$BINARY")
+          LIMIT=15728640
+          echo "Binary size: $SIZE bytes (limit: $LIMIT bytes)"
+          if [ "$SIZE" -ge "$LIMIT" ]; then
+            echo "ERROR: binary too large ($SIZE >= $LIMIT bytes)"
+            exit 1
+          fi
+          echo "OK: binary within size limit"
