@@ -141,5 +141,5 @@ Plans:
 
 Plans:
 - [x] 06-01-PLAN.md — LibraryResolver module: environment discovery, lock file parsing, blocklist, per-scan cache
-- [ ] 06-02-PLAN.md — Scanner wiring: read_manifest_deps() + library resolution in language_map loop with LRES-06 extraction_method
+- [x] 06-02-PLAN.md — Scanner wiring: read_manifest_deps() + library resolution in language_map loop with LRES-06 extraction_method
 - [ ] 06-03-PLAN.md — Integration tests: 6 tests covering all LRES requirements

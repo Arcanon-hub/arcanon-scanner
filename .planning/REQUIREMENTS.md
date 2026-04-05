@@ -132,7 +132,7 @@
 - [x] **LRES-03**: Scanner reads Cargo.lock/go.sum/Gemfile.lock transitive deps to detect libraries that depend on known connection libraries
 - [x] **LRES-04**: Library resolution results are cached per-scan in a HashMap so the same library imported in multiple files is scanned only once
 - [x] **LRES-05**: Missing environment (no venv, no node_modules) logs info at -v level and continues scanning with CDN patterns only
-- [ ] **LRES-06**: Resolved library connections have extraction_method "library_resolution:{lib}→{underlying}" and confidence Medium
+- [x] **LRES-06**: Resolved library connections have extraction_method "library_resolution:{lib}→{underlying}" and confidence Medium
 
 ## v2 Requirements
 
