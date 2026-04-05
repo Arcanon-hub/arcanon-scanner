@@ -71,18 +71,52 @@ pub struct Cli {
     pub verbose: u8,
 }
 
-/// Initialize tracing based on verbosity level
+/// Initialize tracing: stderr at user-selected level + file at DEBUG always.
+/// Log file: ~/.arcanon/last-scan.log (overwritten each run).
 fn init_tracing(verbose: u8) {
     let level = match verbose {
-        0 => tracing::Level::WARN,
-        1 => tracing::Level::INFO,
-        2 => tracing::Level::DEBUG,
-        _ => tracing::Level::TRACE,
+        0 => "warn",
+        1 => "info",
+        2 => "debug",
+        _ => "trace",
     };
-    tracing_subscriber::fmt()
-        .with_max_level(level)
-        .with_writer(std::io::stderr)
-        .init();
+
+    // Always write debug-level log to ~/.arcanon/last-scan.log
+    let log_file = std::env::var("HOME").ok().and_then(|home| {
+        let log_dir = std::path::PathBuf::from(&home).join(".arcanon");
+        let _ = std::fs::create_dir_all(&log_dir);
+        std::fs::File::create(log_dir.join("last-scan.log")).ok()
+    });
+
+    if let Some(file) = log_file {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        use tracing_subscriber::Layer;
+
+        let stderr_layer = tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_filter(tracing_subscriber::EnvFilter::new(level));
+
+        let file_layer = tracing_subscriber::fmt::layer()
+            .with_writer(std::sync::Mutex::new(file))
+            .with_ansi(false)
+            .with_filter(tracing_subscriber::EnvFilter::new("debug"));
+
+        tracing_subscriber::registry()
+            .with(stderr_layer)
+            .with(file_layer)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_max_level(match level {
+                "warn" => tracing::Level::WARN,
+                "info" => tracing::Level::INFO,
+                "debug" => tracing::Level::DEBUG,
+                _ => tracing::Level::TRACE,
+            })
+            .with_writer(std::io::stderr)
+            .init();
+    }
 }
 
 fn main() {
