@@ -9,3 +9,4 @@ pub mod plugin;
 pub mod types;
 pub mod upload;
 pub mod vars;
+pub mod wrapper;

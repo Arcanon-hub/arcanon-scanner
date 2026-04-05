@@ -1,5 +1,5 @@
 [package]
-name = "arcanon-scanner"
+name = "arcanon"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
@@ -54,7 +54,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # Hashing (content hash fallback for git context)
-sha2 = "0.10"
+sha2 = "0.11"
 
 # URL parsing (variable resolution)
 url = "2"
