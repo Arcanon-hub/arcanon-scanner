@@ -72,8 +72,8 @@ pub struct Cli {
 }
 
 /// Initialize tracing: stderr at user-selected level + file at DEBUG always.
-/// Log file: ~/.arcanon/last-scan.log (overwritten each run).
-fn init_tracing(verbose: u8) {
+/// Log file: ~/.arcanon/logs/{repo}-{datetime}.log (one per scan, never overwritten).
+fn init_tracing(verbose: u8, scan_root: &std::path::Path) {
     let level = match verbose {
         0 => "warn",
         1 => "info",
@@ -81,11 +81,24 @@ fn init_tracing(verbose: u8) {
         _ => "trace",
     };
 
-    // Always write debug-level log to ~/.arcanon/last-scan.log
+    // Derive repo name from scan root directory (resolve "." to actual dir name)
+    let resolved_root = scan_root
+        .canonicalize()
+        .unwrap_or_else(|_| scan_root.to_path_buf());
+    let repo_name = resolved_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+
+    // Timestamp for unique log file name
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let log_filename = format!("{}-{}.log", repo_name, timestamp);
+
+    // Always write debug-level log to ~/.arcanon/logs/
     let log_file = std::env::var("HOME").ok().and_then(|home| {
-        let log_dir = std::path::PathBuf::from(&home).join(".arcanon");
+        let log_dir = std::path::PathBuf::from(&home).join(".arcanon").join("logs");
         let _ = std::fs::create_dir_all(&log_dir);
-        std::fs::File::create(log_dir.join("last-scan.log")).ok()
+        std::fs::File::create(log_dir.join(&log_filename)).ok()
     });
 
     if let Some(file) = log_file {
@@ -123,7 +136,7 @@ fn main() {
     let cli = Cli::parse();
 
     // Initialize logging
-    init_tracing(cli.verbose);
+    init_tracing(cli.verbose, &cli.path);
 
     // Load config file (.arcanon.toml)
     let file_cfg = config::load_file_config(&cli.path);
