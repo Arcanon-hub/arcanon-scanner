@@ -16,7 +16,9 @@
 use crate::ast::AstHelper;
 use crate::patterns::PatternRegistry;
 use crate::plugin::FileContext;
+use crate::types::{Confidence, ConnectionInfo, ExtractionResult};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tracing::debug;
 
 /// Maps function/method names to the protocol they wrap (D-04).
@@ -704,6 +706,138 @@ pub fn build_wrapper_map(
     map
 }
 
+/// Extract first string/template-literal argument from a function call line.
+/// Returns the normalized string (template literals → {param}).
+/// Returns None if no string literal or template literal is found in args.
+fn extract_string_arg_from_call(line: &str, callee: &str) -> Option<String> {
+    // Find the call site: callee + "("
+    let call_pattern = format!("{callee}(");
+    let call_pos = line.find(&call_pattern)?;
+    let after_open = &line[call_pos + call_pattern.len()..];
+
+    // Check for template literal argument (backtick)
+    if let Some(bt_start) = after_open.find('`') {
+        let rest = &after_open[bt_start..];
+        if let Some(bt_end) = rest[1..].find('`') {
+            let raw = &rest[..bt_end + 2]; // include both backticks
+            return Some(normalize_template_literal(raw));
+        }
+    }
+
+    // Check for f-string (Python)
+    if let Some(f_pos) = after_open.find("f\"").or_else(|| after_open.find("f'")) {
+        let quote_char = after_open.chars().nth(f_pos + 1).unwrap_or('"');
+        let rest = &after_open[f_pos..];
+        let end_quote = if quote_char == '"' { '"' } else { '\'' };
+        if let Some(end) = rest[2..].find(end_quote) {
+            let raw = &rest[..end + 3];
+            return Some(normalize_template_literal(raw));
+        }
+    }
+
+    // Check for regular string literal (" or ')
+    let bytes = after_open.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'"' || b == b'\'' {
+            let quote = b as char;
+            let rest = &after_open[i + 1..];
+            if let Some(end) = rest.find(quote) {
+                let raw = rest[..end].to_string();
+                // Normalize in case it contains format specifiers
+                return Some(normalize_template_literal(&raw));
+            }
+        }
+    }
+
+    None
+}
+
+/// Pass 2: Scan files for calls to wrappers in the map, emit ConnectionInfo findings.
+///
+/// # Arguments
+/// * `files` - Files to scan for wrapper calls (typically language-filtered user files)
+/// * `wrapper_map` - Built by build_wrapper_map() in Pass 1
+/// * `service_roots` - For source_service attribution
+///
+/// # Returns
+/// ExtractionResult with all ConnectionInfo findings from wrapper calls
+pub fn detect_wrapper_calls(
+    files: &[FileContext],
+    wrapper_map: &WrapperMap,
+    service_roots: &HashMap<PathBuf, String>,
+) -> ExtractionResult {
+    let mut connections = Vec::new();
+
+    for file in files {
+        for (line_idx, line) in file.content.lines().enumerate() {
+            let trimmed = line.trim();
+
+            // Skip comment lines
+            if trimmed.starts_with("//")
+                || trimmed.starts_with('#')
+                || trimmed.starts_with("///")
+                || trimmed.starts_with("/*")
+                || trimmed.starts_with('*')
+            {
+                continue;
+            }
+
+            // Check each wrapper in the map
+            for (wrapper_name, info) in wrapper_map.iter() {
+                // Skip seed entries (depth 0 — they are handled by pattern engine)
+                if info.depth == 0 {
+                    continue;
+                }
+
+                // Check if this line contains a call to the wrapper
+                let call_pattern = format!("{wrapper_name}(");
+                if !line.contains(&call_pattern) {
+                    continue;
+                }
+
+                // Extract the terminal function (seed) from the chain — last element
+                let terminal = info
+                    .chain
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| wrapper_name.clone());
+
+                // Try to extract string argument (path/URL)
+                let path = extract_string_arg_from_call(line, wrapper_name);
+
+                let source_service = crate::plugin::scope_to_service(&file.path, service_roots)
+                    .unwrap_or("")
+                    .to_string();
+
+                connections.push(ConnectionInfo {
+                    source_service,
+                    target_name: String::new(), // resolver fills this in from path matching
+                    protocol: info.protocol.clone(),
+                    method: None,
+                    path,
+                    source_file: format!("{}:{}", file.relative_path, line_idx + 1),
+                    confidence: Confidence::Medium,
+                    extraction_method: format!("wrapper_trace:{wrapper_name}→{terminal}"),
+                    evidence: Some(trimmed.to_string()),
+                });
+
+                // Don't break — same line could call multiple wrappers (unusual but possible)
+            }
+        }
+    }
+
+    debug!(
+        "Pass 2 detected {} wrapper calls across {} files",
+        connections.len(),
+        files.len()
+    );
+
+    ExtractionResult {
+        connections,
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1064,5 +1198,293 @@ mod tests {
 
         // With an empty registry, map should be empty
         assert!(map.is_empty());
+    }
+
+    // Tests for Pass 2 — detect_wrapper_calls
+
+    #[test]
+    fn test_extract_string_arg_simple_string() {
+        let line = "apiFetch('/api/v1/teams')";
+        let result = extract_string_arg_from_call(line, "apiFetch");
+        assert_eq!(result, Some("/api/v1/teams".to_string()));
+    }
+
+    #[test]
+    fn test_extract_string_arg_template_literal() {
+        let line = "apiFetch(`/api/v1/orgs/${orgId}/teams`)";
+        let result = extract_string_arg_from_call(line, "apiFetch");
+        assert_eq!(result, Some("/api/v1/orgs/{param}/teams".to_string()));
+    }
+
+    #[test]
+    fn test_extract_string_arg_fstring() {
+        let line = "makeRequest(f\"/api/{org}/endpoint\")";
+        let result = extract_string_arg_from_call(line, "makeRequest");
+        assert_eq!(result, Some("/api/{param}/endpoint".to_string()));
+    }
+
+    #[test]
+    fn test_extract_string_arg_no_string_arg() {
+        let line = "apiFetch(buildUrl(id))";
+        let result = extract_string_arg_from_call(line, "apiFetch");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_string_arg_not_found() {
+        let line = "someOtherCall('/api/path')";
+        let result = extract_string_arg_from_call(line, "apiFetch");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_simple() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/hooks/useTeams.ts"),
+            relative_path: "hooks/useTeams.ts".to_string(),
+            content: std::sync::Arc::from("const teams = apiFetch('/api/v1/teams');"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "apiFetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["apiFetch".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "lib/api.ts".to_string(),
+                    line: 5,
+                },
+                depth: 1,
+            },
+        );
+
+        let service_roots = HashMap::new();
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        assert_eq!(result.connections.len(), 1);
+        let conn = &result.connections[0];
+        assert_eq!(conn.path, Some("/api/v1/teams".to_string()));
+        assert_eq!(conn.protocol, "rest");
+        assert_eq!(conn.confidence, Confidence::Medium);
+        assert_eq!(conn.extraction_method, "wrapper_trace:apiFetch→fetch");
+        assert_eq!(
+            conn.evidence,
+            Some("const teams = apiFetch('/api/v1/teams');".to_string())
+        );
+        assert_eq!(conn.source_file, "hooks/useTeams.ts:1");
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_template_literal() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/hooks/useOrgs.ts"),
+            relative_path: "hooks/useOrgs.ts".to_string(),
+            content: std::sync::Arc::from("const orgs = apiFetch(`/api/v1/orgs/${orgId}/teams`);"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "apiFetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["apiFetch".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "lib/api.ts".to_string(),
+                    line: 5,
+                },
+                depth: 1,
+            },
+        );
+
+        let service_roots = HashMap::new();
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        assert_eq!(result.connections.len(), 1);
+        let conn = &result.connections[0];
+        assert_eq!(conn.path, Some("/api/v1/orgs/{param}/teams".to_string()));
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_skips_comments() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/hooks/test.ts"),
+            relative_path: "hooks/test.ts".to_string(),
+            content: std::sync::Arc::from("// apiFetch('/api/v1/teams');\nconst x = 1;"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "apiFetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["apiFetch".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "lib/api.ts".to_string(),
+                    line: 5,
+                },
+                depth: 1,
+            },
+        );
+
+        let service_roots = HashMap::new();
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        // Comment line should be skipped
+        assert_eq!(result.connections.len(), 0);
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_skips_seed_entries() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/app.ts"),
+            relative_path: "app.ts".to_string(),
+            content: std::sync::Arc::from("const x = fetch('/api/data');"),
+        };
+
+        let mut map = WrapperMap::new();
+        // Add fetch as a seed entry (depth 0)
+        map.insert(
+            "fetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0, // Seed entry should be skipped by Pass 2
+            },
+        );
+
+        let service_roots = HashMap::new();
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        // Seed entries should be skipped (handled by pattern engine instead)
+        assert_eq!(result.connections.len(), 0);
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_no_string_argument() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/app.ts"),
+            relative_path: "app.ts".to_string(),
+            content: std::sync::Arc::from("const result = apiFetch(buildUrl(id));"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "apiFetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["apiFetch".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "lib/api.ts".to_string(),
+                    line: 5,
+                },
+                depth: 1,
+            },
+        );
+
+        let service_roots = HashMap::new();
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        // Should still emit ConnectionInfo but with path = None
+        assert_eq!(result.connections.len(), 1);
+        let conn = &result.connections[0];
+        assert_eq!(conn.path, None);
+        assert_eq!(conn.extraction_method, "wrapper_trace:apiFetch→fetch");
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_multiple_wrappers_same_file() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/app.ts"),
+            relative_path: "app.ts".to_string(),
+            content: std::sync::Arc::from(
+                "const teams = apiFetch('/api/teams');\nconst events = eventLog('/events');",
+            ),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "apiFetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["apiFetch".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "lib/api.ts".to_string(),
+                    line: 5,
+                },
+                depth: 1,
+            },
+        );
+        map.insert(
+            "eventLog".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["eventLog".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "lib/logger.ts".to_string(),
+                    line: 10,
+                },
+                depth: 1,
+            },
+        );
+
+        let service_roots = HashMap::new();
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        // Should detect both wrapper calls
+        assert_eq!(result.connections.len(), 2);
+        assert_eq!(
+            result.connections[0].extraction_method,
+            "wrapper_trace:apiFetch→fetch"
+        );
+        assert_eq!(
+            result.connections[1].extraction_method,
+            "wrapper_trace:eventLog→fetch"
+        );
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_with_service_roots() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/repo/backend/src/api.ts"),
+            relative_path: "backend/src/api.ts".to_string(),
+            content: std::sync::Arc::from("const teams = apiFetch('/api/v1/teams');"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "apiFetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["apiFetch".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "lib/api.ts".to_string(),
+                    line: 5,
+                },
+                depth: 1,
+            },
+        );
+
+        let mut service_roots = HashMap::new();
+        service_roots.insert(
+            std::path::PathBuf::from("/repo/backend"),
+            "backend-service".to_string(),
+        );
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        assert_eq!(result.connections.len(), 1);
+        let conn = &result.connections[0];
+        assert_eq!(conn.source_service, "backend-service");
     }
 }
