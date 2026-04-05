@@ -447,8 +447,6 @@ fn test_disabled_removes_pattern() {
 #[test]
 fn test_payload_metadata_fields_serialized() {
     use arcanon::core::payload::ScanMetadata;
-    use serde_json::json;
-
     let metadata = ScanMetadata {
         tool: "arcanon",
         tool_version: "0.1.0",
@@ -482,10 +480,8 @@ async fn test_load_with_no_hub_url_returns_empty_registry() {
     let registry = PatternRegistry::load(None).await;
 
     // Either returns empty or cached — neither should panic
-    assert!(
-        registry.patterns().len() >= 0,
-        "Should not panic and return valid registry"
-    );
+    // If we got here without panicking, the registry loaded successfully
+    let _ = registry.patterns().len();
 }
 
 #[test]

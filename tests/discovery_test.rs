@@ -1,4 +1,5 @@
 use arcanon::discovery::walk_repo;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 
 #[test]
