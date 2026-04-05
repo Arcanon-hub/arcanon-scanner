@@ -146,7 +146,10 @@ fn extract_field_name(line: &str) -> Option<String> {
     if let Some(paren_pos) = line.find('(') {
         // Has arguments
         Some(line[..paren_pos].trim().to_string())
-    } else { line.find(':').map(|colon_pos| line[..colon_pos].trim().to_string()) }
+    } else {
+        line.find(':')
+            .map(|colon_pos| line[..colon_pos].trim().to_string())
+    }
 }
 
 #[cfg(test)]

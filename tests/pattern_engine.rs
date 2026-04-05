@@ -5,9 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arcanon::patterns::{
-    Detection, Pattern, PatternConfidence, PatternRegistry, TargetExtraction,
-};
+use arcanon::patterns::{Detection, Pattern, PatternConfidence, PatternRegistry, TargetExtraction};
 use arcanon::plugin::FileContext;
 use arcanon::types::Confidence;
 
@@ -76,7 +74,11 @@ fn test_import_gate_passes_and_fires() {
     };
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
-    assert_eq!(result.connections.len(), 1, "Should fire when import_gate present");
+    assert_eq!(
+        result.connections.len(),
+        1,
+        "Should fire when import_gate present"
+    );
     assert_eq!(
         result.connections[0].target_name, "localhost",
         "Should extract localhost as target"
@@ -154,7 +156,8 @@ fn test_no_string_literal_gives_empty_target_medium_confidence() {
         "Should have empty target when no string literal"
     );
     assert_eq!(
-        result.connections[0].confidence, Confidence::Medium,
+        result.connections[0].confidence,
+        Confidence::Medium,
         "Should fallback to Medium confidence per D-09"
     );
 }
@@ -182,14 +185,15 @@ fn test_named_arg_extraction() {
     let file = FileContext {
         path: PathBuf::from("/repo/test.py"),
         relative_path: "test.py".to_string(),
-        content: Arc::from("sqs.send_message(QueueUrl=\"https://sqs.us-east-1.amazonaws.com/123/my-queue\")"),
+        content: Arc::from(
+            "sqs.send_message(QueueUrl=\"https://sqs.us-east-1.amazonaws.com/123/my-queue\")",
+        ),
     };
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(result.connections.len(), 1);
     assert_eq!(
-        result.connections[0].target_name,
-        "https://sqs.us-east-1.amazonaws.com/123/my-queue",
+        result.connections[0].target_name, "https://sqs.us-east-1.amazonaws.com/123/my-queue",
         "Should extract named argument"
     );
 }
@@ -344,13 +348,19 @@ fn test_user_pattern_overrides_remote_by_id() {
 
     let registry = registry.with_overrides(&[override_pattern]);
 
-    assert_eq!(registry.patterns().len(), 1, "Should have 1 pattern (replaced)");
     assert_eq!(
-        registry.patterns()[0].id, "redis-py",
+        registry.patterns().len(),
+        1,
+        "Should have 1 pattern (replaced)"
+    );
+    assert_eq!(
+        registry.patterns()[0].id,
+        "redis-py",
         "Pattern ID should be redis-py"
     );
     assert_eq!(
-        registry.patterns()[0].detections[0].protocol, "valkey",
+        registry.patterns()[0].detections[0].protocol,
+        "valkey",
         "Protocol should be overridden to valkey"
     );
 }
@@ -382,7 +392,11 @@ fn test_user_pattern_adds_new_id() {
 
     let registry = registry.with_overrides(&[new_pattern]);
 
-    assert_eq!(registry.patterns().len(), 2, "Should have 2 patterns (original + new)");
+    assert_eq!(
+        registry.patterns().len(),
+        2,
+        "Should have 2 patterns (original + new)"
+    );
 
     let ids: Vec<_> = registry.patterns().iter().map(|p| p.id.as_str()).collect();
     assert!(ids.contains(&"redis-py"), "Should still have redis-py");
@@ -411,10 +425,8 @@ fn test_disabled_removes_pattern() {
         detections: vec![],
     };
 
-    let registry = PatternRegistry::from_patterns(
-        vec![redis_pattern, boto3_pattern],
-        "1.0".to_string(),
-    );
+    let registry =
+        PatternRegistry::from_patterns(vec![redis_pattern, boto3_pattern], "1.0".to_string());
 
     assert_eq!(registry.patterns().len(), 2);
 
@@ -426,7 +438,8 @@ fn test_disabled_removes_pattern() {
         "Should have 1 pattern after disabling redis-py"
     );
     assert_eq!(
-        registry.patterns()[0].id, "boto3-sqs",
+        registry.patterns()[0].id,
+        "boto3-sqs",
         "Should only have boto3-sqs"
     );
 }

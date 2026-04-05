@@ -24,4 +24,3 @@ pub use asyncapi::AsyncApiPlugin;
 
 pub mod kubernetes;
 pub use kubernetes::KubernetesPlugin;
-

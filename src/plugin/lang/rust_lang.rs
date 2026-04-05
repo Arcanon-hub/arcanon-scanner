@@ -349,6 +349,4 @@ axum = "0.7""#,
         assert_eq!(ep.path, "/orders");
         assert_eq!(ep.extraction_method, "ast_axum_route");
     }
-
-
 }

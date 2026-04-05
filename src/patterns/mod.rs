@@ -132,7 +132,11 @@ impl PatternRegistry {
     /// Construct registry directly from a pattern list (for testing).
     #[allow(dead_code)]
     pub fn from_patterns(patterns: Vec<Pattern>, version: String) -> Self {
-        Self { patterns, version, source: PatternSource::None }
+        Self {
+            patterns,
+            version,
+            source: PatternSource::None,
+        }
     }
 
     /// Load patterns from remote or cache. Async function; must be called from tokio context.
@@ -146,10 +150,10 @@ impl PatternRegistry {
     /// 6. On error: fall back to cache, or return empty registry
     pub async fn load(_hub_url: Option<&str>) -> Self {
         // Determine cache path
-        let cache_path = match std::env::var("HOME").ok() {
-            Some(home) => PathBuf::from(home).join(".arcanon/patterns.json"),
+        let cache_path = match dirs::home_dir() {
+            Some(home) => home.join(".arcanon").join("patterns.json"),
             None => {
-                tracing::warn!("HOME env var not set, no pattern cache available");
+                tracing::warn!("Home directory not found, no pattern cache available");
                 return Self {
                     patterns: vec![],
                     version: "".to_string(),
@@ -223,7 +227,9 @@ impl PatternRegistry {
                 }
             }
             _ => {
-                tracing::warn!("Pattern fetch failed (network error or timeout). Falling back to cache.");
+                tracing::warn!(
+                    "Pattern fetch failed (network error or timeout). Falling back to cache."
+                );
                 Self::fallback_to_cache(&cache_path)
             }
         }
@@ -232,27 +238,28 @@ impl PatternRegistry {
     /// Fallback: try to read cache, or return empty registry
     fn fallback_to_cache(cache_path: &PathBuf) -> Self {
         match std::fs::read_to_string(cache_path) {
-            Ok(content) => {
-                match serde_json::from_str::<PatternFile>(&content) {
-                    Ok(pattern_file) => {
-                        let version = pattern_file.version.clone();
-                        let patterns = pattern_file.into_patterns();
-                        Self {
-                            patterns,
-                            version,
-                            source: PatternSource::Cache,
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse cached patterns: {}. Running with zero patterns.", e);
-                        Self {
-                            patterns: vec![],
-                            version: "".to_string(),
-                            source: PatternSource::None,
-                        }
+            Ok(content) => match serde_json::from_str::<PatternFile>(&content) {
+                Ok(pattern_file) => {
+                    let version = pattern_file.version.clone();
+                    let patterns = pattern_file.into_patterns();
+                    Self {
+                        patterns,
+                        version,
+                        source: PatternSource::Cache,
                     }
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to parse cached patterns: {}. Running with zero patterns.",
+                        e
+                    );
+                    Self {
+                        patterns: vec![],
+                        version: "".to_string(),
+                        source: PatternSource::None,
+                    }
+                }
+            },
             Err(_) => {
                 tracing::warn!("No pattern cache found. Running with zero dynamic patterns.");
                 Self {
@@ -319,10 +326,11 @@ impl PatternRegistry {
                     }
 
                     // Extract target
-                    let (target_name, confidence) = match extract_target(line, &detection.target_extraction) {
-                        Some(t) if !t.is_empty() => (t, map_confidence(&detection.confidence)),
-                        _ => ("".to_string(), Confidence::Medium), // D-09
-                    };
+                    let (target_name, confidence) =
+                        match extract_target(line, &detection.target_extraction) {
+                            Some(t) if !t.is_empty() => (t, map_confidence(&detection.confidence)),
+                            _ => ("".to_string(), Confidence::Medium), // D-09
+                        };
 
                     findings.push(ConnectionInfo {
                         source_service: crate::plugin::scope_to_service(&file.path, service_roots)
@@ -392,7 +400,8 @@ impl PatternRegistry {
                             "first_string_arg" => TargetExtraction::FirstStringArg,
                             "url_hostname" => TargetExtraction::UrlHostname,
                             other if other.starts_with("named_arg:") => {
-                                let key = other.strip_prefix("named_arg:").unwrap_or("").to_string();
+                                let key =
+                                    other.strip_prefix("named_arg:").unwrap_or("").to_string();
                                 TargetExtraction::NamedArg(key)
                             }
                             _ => TargetExtraction::None, // graceful unknown
@@ -697,7 +706,11 @@ mod tests {
         };
 
         let findings = registry.apply(&file, "python", &HashMap::new());
-        assert_eq!(findings.len(), 0, "Should skip pattern when import_gate not found");
+        assert_eq!(
+            findings.len(),
+            0,
+            "Should skip pattern when import_gate not found"
+        );
     }
 
     #[test]
@@ -804,7 +817,11 @@ mod tests {
         let findings = registry.apply(&file, "python", &HashMap::new());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].target_name, "");
-        assert_eq!(findings[0].confidence, Confidence::Medium, "Should fallback to Medium when no string literal");
+        assert_eq!(
+            findings[0].confidence,
+            Confidence::Medium,
+            "Should fallback to Medium when no string literal"
+        );
     }
 
     #[test]
@@ -841,7 +858,10 @@ mod tests {
 
         let findings = registry.apply(&file, "python", &HashMap::new());
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].target_name, "https://sqs.us-east-1.amazonaws.com/123/queue");
+        assert_eq!(
+            findings[0].target_name,
+            "https://sqs.us-east-1.amazonaws.com/123/queue"
+        );
     }
 
     #[test]

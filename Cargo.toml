@@ -62,6 +62,9 @@ url = "2"
 # Timestamps for payload metadata
 chrono = { version = "0.4", features = ["serde"] }
 
+# Cross-platform home directory resolution
+dirs = "6"
+
 # Spec parsing (Phase 3 config plugins)
 openapiv3 = "2.2"
 apollo-parser = "0.8"

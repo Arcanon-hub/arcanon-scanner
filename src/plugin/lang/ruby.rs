@@ -400,7 +400,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_resources_expansion_correct_paths() {
         let expanded = expand_resources("photos", Confidence::Medium);
@@ -415,7 +414,4 @@ mod tests {
         assert_eq!(paths[5], "/photos/:id");
         assert_eq!(paths[6], "/photos/:id");
     }
-
-
-
 }

@@ -10,9 +10,18 @@ updates:
       tree-sitter:
         patterns:
           - "tree-sitter*"
+      all-other:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "tree-sitter*"
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     commit-message:
       prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"

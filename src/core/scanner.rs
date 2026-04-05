@@ -12,7 +12,7 @@ use crate::patterns::{PatternRegistry, PatternSource};
 use crate::plugin::{default_plugins, ExtractionContext, FileContext, LanguagePlugin};
 use crate::types::ExtractionResult;
 use crate::vars::build_variable_store;
-use crate::{wrapper};
+use crate::wrapper;
 use anyhow::Result;
 use globset::GlobSetBuilder;
 use rayon::prelude::*;
@@ -209,7 +209,10 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
 
     // Step 7: Run pattern engine for each language (PTRN-05, PTRN-06)
     let language_map: &[(&str, &[&str])] = &[
-        ("typescript", &["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]),
+        (
+            "typescript",
+            &["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
+        ),
         ("python", &["**/*.py"]),
         ("go", &["**/*.go"]),
         ("java", &["**/*.java"]),
@@ -225,7 +228,11 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
             // Run pattern engine on user source files
             let result = pattern_registry.apply_all(&lang_files, language, &service_roots);
             if !result.connections.is_empty() {
-                debug!("Pattern engine: {} {} connections", result.connections.len(), language);
+                debug!(
+                    "Pattern engine: {} {} connections",
+                    result.connections.len(),
+                    language
+                );
                 pattern_results.push(result);
             }
 
@@ -264,7 +271,11 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
                                             protocol: protocol.clone(),
                                             method: None,
                                             path: None,
-                                            source_file: format!("{}:{}", file.relative_path, line_no + 1),
+                                            source_file: format!(
+                                                "{}:{}",
+                                                file.relative_path,
+                                                line_no + 1
+                                            ),
                                             confidence: crate::types::Confidence::Medium, // LRES-06
                                             extraction_method: format!(
                                                 "library_resolution:{}→{}",
@@ -315,10 +326,15 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
             );
 
             if !wrapper_map.is_empty() {
-                debug!("Wrapper map for {}: {} entries", language, wrapper_map.len());
+                debug!(
+                    "Wrapper map for {}: {} entries",
+                    language,
+                    wrapper_map.len()
+                );
 
                 {
-                    let wrapper_result = wrapper::detect_wrapper_calls(&lang_files, &wrapper_map, &service_roots);
+                    let wrapper_result =
+                        wrapper::detect_wrapper_calls(&lang_files, &wrapper_map, &service_roots);
                     if !wrapper_result.connections.is_empty() {
                         debug!(
                             "Wrapper tracing: {} {} connections",
@@ -333,7 +349,8 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     }
 
     // Merge plugin results + pattern results together (PTRN-06)
-    let combined_results: Vec<ExtractionResult> = all_results.into_iter().chain(pattern_results).collect();
+    let combined_results: Vec<ExtractionResult> =
+        all_results.into_iter().chain(pattern_results).collect();
     let results = combined_results;
 
     // Step 8: Merge all results
@@ -532,7 +549,10 @@ fn line_contains_import(line: &str, lib_name: &str) -> bool {
             return true;
         }
         // Go: import block handled as content contains check
-        if line.contains('"') && line.contains(candidate) && (line.trim_start().starts_with('"') || line.contains("import ")) {
+        if line.contains('"')
+            && line.contains(candidate)
+            && (line.trim_start().starts_with('"') || line.contains("import "))
+        {
             return true;
         }
     }

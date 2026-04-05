@@ -17,11 +17,7 @@ mod wrapper;
 
 /// Static service topology scanner for Arcanon Hub
 #[derive(Parser, Debug)]
-#[command(
-    name = "arcanon",
-    version,
-    about = "Static service topology scanner"
-)]
+#[command(name = "arcanon", version, about = "Static service topology scanner")]
 pub struct Cli {
     /// Root directory to scan
     #[arg(default_value = ".")]
@@ -96,8 +92,8 @@ fn init_tracing(verbose: u8, scan_root: &std::path::Path) {
     let log_filename = format!("{}-{}.log", repo_name, timestamp);
 
     // Always write debug-level log to ~/.arcanon/logs/
-    let log_file = std::env::var("HOME").ok().and_then(|home| {
-        let log_dir = std::path::PathBuf::from(&home).join(".arcanon").join("logs");
+    let log_file = dirs::home_dir().and_then(|home| {
+        let log_dir = home.join(".arcanon").join("logs");
         let _ = std::fs::create_dir_all(&log_dir);
         std::fs::File::create(log_dir.join(&log_filename)).ok()
     });
@@ -147,8 +143,8 @@ fn main() {
         .hub_url
         .or(file_cfg.scanner.hub_url)
         .unwrap_or_else(|| "https://hub.arcanon.dev".to_string());
-    let api_key = std::env::var("ARCANON_API_KEY")
-        .unwrap_or_else(|_| "placeholder-key".to_string());
+    let api_key =
+        std::env::var("ARCANON_API_KEY").unwrap_or_else(|_| "placeholder-key".to_string());
     let project_slug = cli
         .project_slug
         .or(file_cfg.scanner.project_slug)
@@ -267,8 +263,7 @@ mod tests {
 
     #[test]
     fn test_hub_url_flag() {
-        let cli = Cli::try_parse_from(["arcanon", "--hub-url", "https://hub.arcanon.dev"])
-            .unwrap();
+        let cli = Cli::try_parse_from(["arcanon", "--hub-url", "https://hub.arcanon.dev"]).unwrap();
         assert_eq!(cli.hub_url.as_deref(), Some("https://hub.arcanon.dev"));
     }
 
@@ -292,21 +287,14 @@ mod tests {
 
     #[test]
     fn test_plugins_flag() {
-        let cli =
-            Cli::try_parse_from(["arcanon", "--plugins", "openapi,typescript"]).unwrap();
+        let cli = Cli::try_parse_from(["arcanon", "--plugins", "openapi,typescript"]).unwrap();
         assert_eq!(cli.plugins.as_deref(), Some("openapi,typescript"));
     }
 
     #[test]
     fn test_exclude_repeatable() {
-        let cli = Cli::try_parse_from([
-            "arcanon",
-            "--exclude",
-            "*.log",
-            "--exclude",
-            "vendor/**",
-        ])
-        .unwrap();
+        let cli = Cli::try_parse_from(["arcanon", "--exclude", "*.log", "--exclude", "vendor/**"])
+            .unwrap();
         assert_eq!(cli.exclude.len(), 2);
         assert!(cli.exclude.contains(&"*.log".to_string()));
         assert!(cli.exclude.contains(&"vendor/**".to_string()));
