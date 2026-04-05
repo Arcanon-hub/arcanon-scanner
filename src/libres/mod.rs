@@ -17,6 +17,7 @@
 //! - **Graceful failure**: Missing environments log at info level, return empty results.
 
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Libraries that are frameworks, tools, or data processing libraries — not connection wrappers.
@@ -672,6 +673,313 @@ impl LibraryResolver {
             }
         }
     }
+}
+
+/// Read production dependency names from the project manifest for the given language.
+/// Returns empty vec if manifest is absent, unparseable, or language is unsupported.
+/// Decision D-01: read manifest, not import statements.
+/// Decision D-02: production deps only (skip devDependencies, dev-dependencies, test groups).
+pub fn read_manifest_deps(root: &Path, language: &str) -> Vec<String> {
+    match language {
+        "python" => read_python_deps(root),
+        "typescript" | "javascript" => read_node_deps(root),
+        "rust" => read_rust_deps(root),
+        "go" => read_go_deps(root),
+        "java" => read_java_deps(root),
+        "csharp" => read_csharp_deps(root),
+        "ruby" => read_ruby_deps(root),
+        _ => vec![],
+    }
+}
+
+/// Read Python dependencies from pyproject.toml or requirements.txt.
+fn read_python_deps(root: &Path) -> Vec<String> {
+    // Try pyproject.toml first
+    let pyproject = root.join("pyproject.toml");
+    if let Ok(content) = fs::read_to_string(&pyproject) {
+        if let Ok(value) = content.parse::<toml::Value>() {
+            let mut deps = Vec::new();
+
+            // [project.dependencies] — PEP 508 format
+            if let Some(toml::Value::Array(arr)) = value.get("project").and_then(|t| {
+                if let toml::Value::Table(tbl) = t {
+                    tbl.get("dependencies")
+                } else {
+                    None
+                }
+            }) {
+                for item in arr {
+                    if let toml::Value::String(s) = item {
+                        let pkg_name = extract_python_package_name(s);
+                        if !pkg_name.is_empty() {
+                            deps.push(pkg_name);
+                        }
+                    }
+                }
+            }
+
+            // [tool.poetry.dependencies] — TOML table keys
+            if let Some(toml::Value::Table(tool)) = value.get("tool") {
+                if let Some(toml::Value::Table(poetry)) = tool.get("poetry") {
+                    if let Some(toml::Value::Table(deps_table)) = poetry.get("dependencies") {
+                        for key in deps_table.keys() {
+                            if key != "python" {
+                                deps.push(key.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !deps.is_empty() {
+                // Deduplicate
+                deps.sort();
+                deps.dedup();
+                return deps;
+            }
+        }
+    }
+
+    // Fall back to requirements.txt
+    let requirements = root.join("requirements.txt");
+    if let Ok(content) = fs::read_to_string(&requirements) {
+        let deps: Vec<String> = content
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty() && !trimmed.starts_with('#')
+            })
+            .map(|line| {
+                let trimmed = line.trim();
+                // Split on version specifiers: >=<!=~
+                extract_python_package_name(trimmed)
+            })
+            .filter(|s| !s.is_empty())
+            .collect();
+        return deps;
+    }
+
+    Vec::new()
+}
+
+/// Extract package name from PEP 508 format string (e.g., "requests>=2.0").
+fn extract_python_package_name(s: &str) -> String {
+    // Split on version specifiers and extras
+    let s = s.trim();
+    for delim in &['>', '=', '<', '!', '~', '[', ';', ' '] {
+        if let Some(pos) = s.find(*delim) {
+            return s[..pos].trim().to_string();
+        }
+    }
+    s.to_string()
+}
+
+/// Read Node dependencies from package.json.
+fn read_node_deps(root: &Path) -> Vec<String> {
+    let package_json = root.join("package.json");
+    if let Ok(content) = fs::read_to_string(&package_json) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+            let mut deps = Vec::new();
+            if let Some(serde_json::Value::Object(deps_obj)) = value.get("dependencies") {
+                for key in deps_obj.keys() {
+                    deps.push(key.clone());
+                }
+            }
+            return deps;
+        }
+    }
+    Vec::new()
+}
+
+/// Read Rust dependencies from Cargo.toml.
+fn read_rust_deps(root: &Path) -> Vec<String> {
+    let cargo_toml = root.join("Cargo.toml");
+    if let Ok(content) = fs::read_to_string(&cargo_toml) {
+        if let Ok(value) = content.parse::<toml::Value>() {
+            let mut deps = Vec::new();
+            if let Some(toml::Value::Table(deps_table)) = value.get("dependencies") {
+                for key in deps_table.keys() {
+                    deps.push(key.clone());
+                }
+            }
+            return deps;
+        }
+    }
+    Vec::new()
+}
+
+/// Read Go dependencies from go.mod.
+fn read_go_deps(root: &Path) -> Vec<String> {
+    let go_mod = root.join("go.mod");
+    if let Ok(content) = fs::read_to_string(&go_mod) {
+        let mut deps = Vec::new();
+        let mut in_require_block = false;
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.starts_with("//") {
+                continue;
+            }
+
+            if trimmed == "require (" {
+                in_require_block = true;
+                continue;
+            }
+
+            if in_require_block && trimmed == ")" {
+                in_require_block = false;
+                continue;
+            }
+
+            if in_require_block {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                if let Some(module) = parts.first() {
+                    if !module.is_empty() {
+                        deps.push(module.to_string());
+                    }
+                }
+            } else if trimmed.starts_with("require ") {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    deps.push(parts[1].to_string());
+                }
+            }
+        }
+
+        return deps;
+    }
+    Vec::new()
+}
+
+/// Read Java dependencies from pom.xml.
+fn read_java_deps(root: &Path) -> Vec<String> {
+    let pom_xml = root.join("pom.xml");
+    if let Ok(content) = fs::read_to_string(&pom_xml) {
+        let mut deps = Vec::new();
+        let mut in_dependency = false;
+        let mut group_id = String::new();
+        let mut artifact_id = String::new();
+        let mut scope = String::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.contains("<dependency>") {
+                in_dependency = true;
+                group_id.clear();
+                artifact_id.clear();
+                scope.clear();
+                continue;
+            }
+
+            if trimmed.contains("</dependency>") {
+                in_dependency = false;
+                if !scope.contains("test")
+                    && !scope.contains("provided")
+                    && !group_id.is_empty()
+                    && !artifact_id.is_empty()
+                {
+                    deps.push(format!("{}:{}", group_id, artifact_id));
+                }
+                continue;
+            }
+
+            if in_dependency {
+                if trimmed.starts_with("<groupId>") && trimmed.ends_with("</groupId>") {
+                    group_id = trimmed
+                        .strip_prefix("<groupId>")
+                        .and_then(|s| s.strip_suffix("</groupId>"))
+                        .unwrap_or("")
+                        .to_string();
+                }
+                if trimmed.starts_with("<artifactId>") && trimmed.ends_with("</artifactId>") {
+                    artifact_id = trimmed
+                        .strip_prefix("<artifactId>")
+                        .and_then(|s| s.strip_suffix("</artifactId>"))
+                        .unwrap_or("")
+                        .to_string();
+                }
+                if trimmed.starts_with("<scope>") && trimmed.ends_with("</scope>") {
+                    scope = trimmed
+                        .strip_prefix("<scope>")
+                        .and_then(|s| s.strip_suffix("</scope>"))
+                        .unwrap_or("")
+                        .to_string();
+                }
+            }
+        }
+
+        return deps;
+    }
+    Vec::new()
+}
+
+/// Read C# dependencies from .csproj files.
+fn read_csharp_deps(root: &Path) -> Vec<String> {
+    let mut deps = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_file() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.ends_with(".csproj") {
+                            if let Ok(content) = fs::read_to_string(entry.path()) {
+                                for line in content.lines() {
+                                    let trimmed = line.trim();
+                                    if trimmed.contains("<PackageReference Include=") {
+                                        if let Some(start) = trimmed.find("Include=\"") {
+                                            let after = &trimmed[start + 9..];
+                                            if let Some(end) = after.find('"') {
+                                                deps.push(after[..end].to_string());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deps
+}
+
+/// Read Ruby dependencies from Gemfile.
+fn read_ruby_deps(root: &Path) -> Vec<String> {
+    let gemfile = root.join("Gemfile");
+    if let Ok(content) = fs::read_to_string(&gemfile) {
+        let mut deps = Vec::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+
+            // Skip lines with :test or :development groups
+            if trimmed.contains(":test") || trimmed.contains(":development") {
+                continue;
+            }
+
+            // Lines starting with gem '...' or gem "..."
+            if trimmed.starts_with("gem '") {
+                if let Some(end) = trimmed[5..].find('\'') {
+                    let gem_name = &trimmed[5..5 + end];
+                    deps.push(gem_name.to_string());
+                }
+            } else if trimmed.starts_with("gem \"") {
+                if let Some(end) = trimmed[5..].find('"') {
+                    let gem_name = &trimmed[5..5 + end];
+                    deps.push(gem_name.to_string());
+                }
+            }
+        }
+
+        return deps;
+    }
+
+    Vec::new()
 }
 
 #[cfg(test)]
