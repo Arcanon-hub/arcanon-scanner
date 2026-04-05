@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Language Plugins and Hardening | 8/8 | Complete | 2026-04-04 |
 | 5. Pattern Engine | 5/5 | Complete | 2026-04-05 |
 | 6. Library Resolution | 3/3 | Complete | 2026-04-05 |
-| 7. Wrapper Tracing | 0/TBD | Not started | - |
+| 7. Wrapper Tracing | 0/3 | Not started | - |
 
 ### Phase 5: Pattern Engine
 **Goal**: Scanner fetches detection patterns from https://patterns.arcanon.dev/v1/patterns.json at startup, caches locally, merges with .arcanon.toml overrides, and applies them alongside compiled plugins — so new library detections never require a scanner release
@@ -157,4 +157,9 @@ Plans:
   5. Wrapper map chains: if LibA wraps httpx and LibB wraps LibA, LibB is detected as REST wrapper
   6. Wrapper map is cached per-scan and shared across all files
   7. `arcanon --dry-run` on arcanon-hub detects dashboard → api-server connections with paths
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — WrapperMap types, normalize_template_literal(), Pass 1 build_wrapper_map() with fixed-point iteration
+- [ ] 07-02-PLAN.md — Pass 2 detect_wrapper_calls() + scanner.rs wiring
+- [ ] 07-03-PLAN.md — Integration tests: 7 tests covering all WRAP requirements
