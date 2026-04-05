@@ -14,8 +14,8 @@ path = "src/main.rs"
 # CLI
 clap = { version = "4.6", features = ["derive", "env"] }
 
-# Git context
-gix = "0.81"
+# Git context (minimal features — only repo discovery, remotes, HEAD ref)
+gix = { version = "0.81", default-features = false, features = ["basic", "sha1"] }
 
 # AST parsing — pin grammar crates to prevent ABI split (PITFALLS.md Pitfall 1)
 tree-sitter = "0.26.8"

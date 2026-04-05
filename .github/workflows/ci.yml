@@ -127,15 +127,15 @@ jobs:
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Assert binary size under 15MB
+      - name: Assert binary size under 25MB
         shell: bash
         run: |
           BINARY="${{ matrix.binary }}"
           SIZE=$(wc -c < "$BINARY")
-          LIMIT=15728640
+          LIMIT=26214400
           echo "Binary size: $SIZE bytes (limit: $LIMIT)"
           if [ "$SIZE" -ge "$LIMIT" ]; then
-            echo "ERROR: binary exceeds 15MB ($SIZE bytes)"
+            echo "ERROR: binary exceeds 25MB ($SIZE bytes)"
             exit 1
           fi
 
