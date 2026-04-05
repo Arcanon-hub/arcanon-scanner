@@ -56,7 +56,7 @@ export function apiFetch(path: string, opts?: RequestInit) {
 "#,
     );
 
-    let map = build_wrapper_map(&[api_file], &[], &registry);
+    let map = build_wrapper_map(&[api_file], &[], &registry, "typescript");
 
     assert!(
         map.contains("apiFetch"),
@@ -95,7 +95,7 @@ const result = apiFetch('/api/v1/teams');
     );
 
     let all_files = vec![api_file, caller_file.clone()];
-    let map = build_wrapper_map(&all_files, &[], &registry);
+    let map = build_wrapper_map(&all_files, &[], &registry, "typescript");
 
     assert!(
         map.contains("apiFetch"),
@@ -143,7 +143,7 @@ fn test_wrap_03_library_wrapper_detection() {
     // lib_files: (lib_name, Vec<FileContext>)
     let lib_files = vec![("@acme/rpc".to_string(), vec![lib_file])];
 
-    let map = build_wrapper_map(&[], &lib_files, &registry);
+    let map = build_wrapper_map(&[], &lib_files, &registry, "typescript");
 
     assert!(
         map.contains("post"),
@@ -189,7 +189,7 @@ const result = apiFetch(`/api/v1/orgs/${orgId}/teams`);
 "#,
     );
     let all_files = vec![api_file, caller_file.clone()];
-    let map = build_wrapper_map(&all_files, &[], &registry);
+    let map = build_wrapper_map(&all_files, &[], &registry, "typescript");
     let result = detect_wrapper_calls(&[caller_file], &map, &HashMap::new());
 
     assert!(!result.connections.is_empty());
@@ -222,7 +222,7 @@ fn test_wrap_05_wrapper_chain_multi_level() {
     );
 
     let all_files = vec![api_file, data_file];
-    let map = build_wrapper_map(&all_files, &[], &registry);
+    let map = build_wrapper_map(&all_files, &[], &registry, "typescript");
 
     assert!(
         map.contains("apiFetch"),
@@ -260,7 +260,7 @@ fn test_wrap_06_wrapper_map_reused_across_detect_calls() {
 
     // Build map once (simulating per-scan cache — D-06)
     let all_files = vec![api_file];
-    let map = build_wrapper_map(&all_files, &[], &registry);
+    let map = build_wrapper_map(&all_files, &[], &registry, "typescript");
 
     // Use the same map for multiple detect calls
     let result_a = detect_wrapper_calls(&[file_a], &map, &HashMap::new());
@@ -295,7 +295,7 @@ fn test_wrap_07_extraction_method_format() {
     );
 
     let all_files = vec![api_file, caller_file.clone()];
-    let map = build_wrapper_map(&all_files, &[], &registry);
+    let map = build_wrapper_map(&all_files, &[], &registry, "typescript");
     let result = detect_wrapper_calls(&[caller_file], &map, &HashMap::new());
 
     assert!(!result.connections.is_empty());

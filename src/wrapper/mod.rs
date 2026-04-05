@@ -279,12 +279,20 @@ fn replace_rust_format(s: &str) -> String {
 /// Build the initial wrapper map by seeding from pattern registry known functions (D-02).
 /// For each pattern detection, strip trailing "(" from match_str to get function name.
 /// E.g., "fetch(" → "fetch", "axios.get(" → "axios.get", "Redis(" → "Redis"
-fn seed_from_patterns(registry: &PatternRegistry) -> WrapperMap {
+fn seed_from_patterns(registry: &PatternRegistry, language: &str) -> WrapperMap {
     let mut map = WrapperMap::new();
     for pattern in registry.patterns() {
+        // Only seed from patterns matching the current language
+        if !pattern.languages.is_empty() && !pattern.languages.iter().any(|l| l == language) {
+            continue;
+        }
         for detection in &pattern.detections {
             // Strip trailing "(" to get bare function name
             let name = detection.match_str.trim_end_matches('(').to_string();
+            // Skip very short names that cause false positives (e.g., "Client", ".get")
+            if name.len() < 4 || name.starts_with('.') {
+                continue;
+            }
             if !name.is_empty() && !map.contains(&name) {
                 map.insert(
                     name.clone(),
@@ -642,8 +650,9 @@ pub fn build_wrapper_map(
     user_files: &[FileContext],
     lib_files: &[(String, Vec<FileContext>)], // (lib_name, files)
     registry: &PatternRegistry,
+    language: &str,
 ) -> WrapperMap {
-    let mut map = seed_from_patterns(registry);
+    let mut map = seed_from_patterns(registry, language);
     let initial_count = map.len();
     debug!("Wrapper map seeded with {} known functions", initial_count);
 
@@ -1001,7 +1010,7 @@ mod tests {
         // Create a minimal PatternRegistry for testing with empty patterns
         let registry = crate::patterns::PatternRegistry::from_patterns(vec![], "test".to_string());
 
-        let map = seed_from_patterns(&registry);
+        let map = seed_from_patterns(&registry, "typescript");
         // With an empty registry, seeding should give us an empty map
         assert!(map.is_empty());
     }
@@ -1198,7 +1207,7 @@ mod tests {
 
         let registry = crate::patterns::PatternRegistry::from_patterns(vec![], "test".to_string());
 
-        let map = build_wrapper_map(&[user_file], &[], &registry);
+        let map = build_wrapper_map(&[user_file], &[], &registry, "typescript");
 
         // With an empty registry, map should be empty
         assert!(map.is_empty());
