@@ -134,6 +134,16 @@
 - [x] **LRES-05**: Missing environment (no venv, no node_modules) logs info at -v level and continues scanning with CDN patterns only
 - [x] **LRES-06**: Resolved library connections have extraction_method "library_resolution:{lib}→{underlying}" and confidence Medium
 
+### Wrapper Tracing
+
+- [ ] **WRAP-01**: Pass 1 scans function definitions in user code and identifies wrappers around known connection functions (fetch, axios, httpx, etc.)
+- [ ] **WRAP-02**: Pass 2 detects calls to discovered wrappers and extracts path/URL from arguments including template literals
+- [ ] **WRAP-03**: Library wrapper detection — scans installed library source to find methods that wrap known connection functions (e.g., JournalClient.append → httpx.post)
+- [ ] **WRAP-04**: Template literal path extraction normalizes interpolated segments to {param} (e.g., `/api/v1/orgs/${orgId}/teams` → `/api/v1/orgs/{param}/teams`)
+- [ ] **WRAP-05**: Wrapper map chains — if function A wraps function B which wraps fetch, A is marked as a REST wrapper (multi-level)
+- [ ] **WRAP-06**: Wrapper map is cached per-scan and shared across all files in the language
+- [ ] **WRAP-07**: Wrapper-traced connections include extraction_method "wrapper_trace:{wrapper}→{terminal}" and the extracted path in ConnectionInfo
+
 ## v2 Requirements
 
 ### Enhanced Analysis

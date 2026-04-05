@@ -96,7 +96,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -105,7 +105,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Pipeline and Config Plugins | 5/5 | Complete | 2026-04-04 |
 | 4. Language Plugins and Hardening | 8/8 | Complete | 2026-04-04 |
 | 5. Pattern Engine | 5/5 | Complete | 2026-04-05 |
-| 6. Library Resolution | 0/3 | Not started | - |
+| 6. Library Resolution | 3/3 | Complete | 2026-04-05 |
+| 7. Wrapper Tracing | 0/TBD | Not started | - |
 
 ### Phase 5: Pattern Engine
 **Goal**: Scanner fetches detection patterns from https://patterns.arcanon.dev/v1/patterns.json at startup, caches locally, merges with .arcanon.toml overrides, and applies them alongside compiled plugins — so new library detections never require a scanner release
@@ -143,3 +144,17 @@ Plans:
 - [x] 06-01-PLAN.md — LibraryResolver module: environment discovery, lock file parsing, blocklist, per-scan cache
 - [x] 06-02-PLAN.md — Scanner wiring: read_manifest_deps() + library resolution in language_map loop with LRES-06 extraction_method
 - [ ] 06-03-PLAN.md — Integration tests: 6 tests covering all LRES requirements
+
+### Phase 7: Wrapper Tracing
+**Goal**: Two-pass call graph analysis that discovers function wrappers around known connection functions — both in user code (apiFetch → fetch) and in libraries (JournalClient.append → httpx.post) — then detects calls to those wrappers with path/URL extraction from arguments
+**Depends on**: Phase 6
+**Requirements**: WRAP-01, WRAP-02, WRAP-03, WRAP-04, WRAP-05, WRAP-06, WRAP-07
+**Success Criteria** (what must be TRUE):
+  1. Pass 1 finds `function apiFetch(path) { fetch(...) }` and marks apiFetch as a fetch wrapper
+  2. Pass 2 detects `apiFetch('/api/v1/teams')` and extracts `/api/v1/teams` as the connection path
+  3. Library wrapper: `edgeworks_sdk.HTTPTransport.append` → httpx.post is detected from installed source
+  4. Template literals: `` `/api/v1/orgs/${orgId}/teams` `` extracts as `/api/v1/orgs/{param}/teams`
+  5. Wrapper map chains: if LibA wraps httpx and LibB wraps LibA, LibB is detected as REST wrapper
+  6. Wrapper map is cached per-scan and shared across all files
+  7. `arcanon --dry-run` on arcanon-hub detects dashboard → api-server connections with paths
+**Plans**: TBD
