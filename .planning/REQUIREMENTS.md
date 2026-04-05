@@ -117,13 +117,13 @@
 
 ### Pattern Engine
 
-- [ ] **PTRN-01**: Scanner fetches patterns from remote endpoint (https://patterns.arcanon.dev/v1/patterns.json) at startup when hub-url is configured
-- [ ] **PTRN-02**: Scanner caches fetched patterns to ~/.arcanon/patterns.json with ETag/Last-Modified for conditional requests
-- [ ] **PTRN-03**: Scanner falls back to local cache when remote is unreachable, then to embedded defaults when no cache exists
+- [x] **PTRN-01**: Scanner fetches patterns from remote endpoint (https://patterns.arcanon.dev/v1/patterns.json) at startup when hub-url is configured
+- [x] **PTRN-02**: Scanner caches fetched patterns to ~/.arcanon/patterns.json with ETag/Last-Modified for conditional requests
+- [x] **PTRN-03**: Scanner falls back to local cache when remote is unreachable, then to embedded defaults when no cache exists
 - [x] **PTRN-04**: User can define custom patterns in .arcanon.toml [[patterns]] section that override remote patterns by ID
-- [ ] **PTRN-05**: Pattern engine applies import_gate (content check) + match (line scan) + target_extraction to produce ConnectionInfo findings
-- [ ] **PTRN-06**: Pattern findings merge with compiled plugin findings through the existing merger pipeline
-- [ ] **PTRN-07**: ScanPayloadV1 metadata includes pattern_version and pattern_source fields
+- [x] **PTRN-05**: Pattern engine applies import_gate (content check) + match (line scan) + target_extraction to produce ConnectionInfo findings
+- [x] **PTRN-06**: Pattern findings merge with compiled plugin findings through the existing merger pipeline
+- [x] **PTRN-07**: ScanPayloadV1 metadata includes pattern_version and pattern_source fields
 
 ### Library Resolution
 
