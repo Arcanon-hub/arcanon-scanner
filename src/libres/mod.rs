@@ -116,10 +116,8 @@ fn dep_to_protocols(dep_name: &str) -> Vec<String> {
     let lower = dep_name.to_lowercase();
     let mut protocols = Vec::new();
     for (fragment, protocol) in KNOWN_CONNECTION_LIBS {
-        if lower.contains(&fragment.to_lowercase()) {
-            if !protocols.contains(&protocol.to_string()) {
-                protocols.push(protocol.to_string());
-            }
+        if lower.contains(&fragment.to_lowercase()) && !protocols.contains(&protocol.to_string()) {
+            protocols.push(protocol.to_string());
         }
     }
     protocols
