@@ -127,11 +127,11 @@
 
 ### Library Resolution
 
-- [ ] **LRES-01**: Scanner discovers Python venv (venv/, .venv/, env/) and scans library source files with the pattern engine to detect connection wrappers
-- [ ] **LRES-02**: Scanner discovers node_modules/ and scans library source files to detect connection wrappers
-- [ ] **LRES-03**: Scanner reads Cargo.lock/go.sum/Gemfile.lock transitive deps to detect libraries that depend on known connection libraries
-- [ ] **LRES-04**: Library resolution results are cached per-scan in a HashMap so the same library imported in multiple files is scanned only once
-- [ ] **LRES-05**: Missing environment (no venv, no node_modules) logs info at -v level and continues scanning with CDN patterns only
+- [x] **LRES-01**: Scanner discovers Python venv (venv/, .venv/, env/) and scans library source files with the pattern engine to detect connection wrappers
+- [x] **LRES-02**: Scanner discovers node_modules/ and scans library source files to detect connection wrappers
+- [x] **LRES-03**: Scanner reads Cargo.lock/go.sum/Gemfile.lock transitive deps to detect libraries that depend on known connection libraries
+- [x] **LRES-04**: Library resolution results are cached per-scan in a HashMap so the same library imported in multiple files is scanned only once
+- [x] **LRES-05**: Missing environment (no venv, no node_modules) logs info at -v level and continues scanning with CDN patterns only
 - [ ] **LRES-06**: Resolved library connections have extraction_method "library_resolution:{lib}→{underlying}" and confidence Medium
 
 ## v2 Requirements
