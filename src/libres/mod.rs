@@ -408,6 +408,202 @@ impl LibraryResolver {
         }
     }
 
+    /// Find Python library path in a Python environment (site-packages directory).
+    /// Normalizes library name: replaces `-` with `_` to match Python naming conventions.
+    fn find_python_library_path(&self, dep_name: &str, env_path: &Path) -> Option<PathBuf> {
+        let normalized = dep_name.replace('-', "_");
+        let lib_path = env_path.join(&normalized);
+        if lib_path.is_dir() {
+            Some(lib_path)
+        } else {
+            None
+        }
+    }
+
+    /// Find Node library path in node_modules.
+    /// Handles scoped packages: @scope/name maps to @scope/name/.
+    fn find_node_library_path(&self, dep_name: &str, env_path: &Path) -> Option<PathBuf> {
+        let lib_path = env_path.join(dep_name);
+        if lib_path.is_dir() {
+            Some(lib_path)
+        } else {
+            None
+        }
+    }
+
+    /// Find Ruby library path in gems directory.
+    /// Looks for a directory starting with {dep_name}- (gem naming convention).
+    fn find_ruby_library_path(&self, dep_name: &str, env_path: &Path) -> Option<PathBuf> {
+        if let Ok(entries) = std::fs::read_dir(env_path) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_dir() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            if name.starts_with(&format!("{}-", dep_name)) {
+                                return Some(entry.path());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Scan a library directory and detect protocols using the pattern engine.
+    fn scan_library_source(
+        &self,
+        lib_dir: &Path,
+        language: &str,
+        registry: &crate::patterns::PatternRegistry,
+    ) -> Vec<String> {
+        // Walk the library directory to collect files
+        match crate::discovery::walk_repo(lib_dir, &[]) {
+            Ok(file_paths) => {
+                // Read and build FileContext for each file
+                let mut files = Vec::new();
+                for path in file_paths {
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => {
+                            let relative_path = path
+                                .strip_prefix(lib_dir)
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_else(|_| path.to_string_lossy().to_string());
+
+                            files.push(crate::plugin::FileContext {
+                                path: path.clone(),
+                                relative_path,
+                                content: std::sync::Arc::from(content),
+                            });
+                        }
+                        Err(_) => {
+                            tracing::debug!("Failed to read library file: {}", path.display());
+                        }
+                    }
+                }
+
+                // Run pattern engine on library files
+                let result = registry.apply_all(&files, language, &HashMap::new());
+
+                // Extract unique protocols from connections
+                let mut protocols = std::collections::HashSet::new();
+                for conn in result.connections {
+                    protocols.insert(conn.protocol);
+                }
+                let mut result_protocols: Vec<String> = protocols.into_iter().collect();
+                result_protocols.sort();
+                result_protocols
+            }
+            Err(_) => {
+                tracing::debug!("Failed to walk library directory: {}", lib_dir.display());
+                Vec::new()
+            }
+        }
+    }
+
+    /// Resolve libraries for a given language and list of dependencies.
+    /// Returns a vector of ResolvedLibrary entries for libraries that wrap known protocols.
+    pub fn resolve_for_language(
+        &mut self,
+        registry: &crate::patterns::PatternRegistry,
+        language: &str,
+        dep_names: &[String],
+        _service_roots: &HashMap<PathBuf, String>,
+    ) -> Vec<ResolvedLibrary> {
+        let mut results = Vec::new();
+
+        // Determine environment path for this language
+        let env_path = match language {
+            "python" => self.discover_python_env(),
+            "javascript" | "typescript" => self.discover_node_env(),
+            "ruby" => self.discover_ruby_env(),
+            _ => None,
+        };
+
+        // If environment not found for a language that needs it, log and return empty
+        if env_path.is_none() && ["python", "javascript", "typescript", "ruby"].contains(&language)
+        {
+            tracing::info!(
+                "Library resolution disabled for {}: environment not found at {}. Install dependencies for full scan.",
+                language,
+                self.root.display()
+            );
+            return Vec::new();
+        }
+
+        // Process each dependency
+        for dep_name in dep_names {
+            // Skip blocklisted libraries
+            if Self::is_blocklisted(dep_name) {
+                continue;
+            }
+
+            // Check cache
+            if let Some(cached_protocols) = self.cache.get(dep_name) {
+                if !cached_protocols.is_empty() {
+                    results.push(ResolvedLibrary {
+                        lib_name: dep_name.clone(),
+                        protocols: cached_protocols.clone(),
+                        source_file_hint: String::new(),
+                    });
+                }
+                continue;
+            }
+
+            // Try to find and scan library source
+            let mut protocols = Vec::new();
+            if let Some(ref env) = env_path {
+                let lib_dir = match language {
+                    "python" => self.find_python_library_path(dep_name, env),
+                    "javascript" | "typescript" => self.find_node_library_path(dep_name, env),
+                    "ruby" => self.find_ruby_library_path(dep_name, env),
+                    _ => None,
+                };
+
+                if let Some(dir) = lib_dir {
+                    protocols = self.scan_library_source(&dir, language, registry);
+                }
+            }
+
+            // If no source found, try lock file approach for certain languages
+            if protocols.is_empty() {
+                match language {
+                    "go" => {
+                        let go_deps = self.parse_go_mod();
+                        protocols = infer_protocols_from_deps(&go_deps);
+                    }
+                    "rust" => {
+                        let cargo_deps = self.parse_cargo_lock();
+                        if let Some(deps) = cargo_deps.get(dep_name) {
+                            protocols = infer_protocols_from_deps(deps);
+                        }
+                    }
+                    "ruby" => {
+                        let gem_deps = self.parse_gemfile_lock();
+                        if let Some(deps) = gem_deps.get(dep_name) {
+                            protocols = infer_protocols_from_deps(deps);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // Store in cache (even if empty)
+            self.cache.insert(dep_name.clone(), protocols.clone());
+
+            // If protocols found, emit ResolvedLibrary
+            if !protocols.is_empty() {
+                results.push(ResolvedLibrary {
+                    lib_name: dep_name.clone(),
+                    protocols,
+                    source_file_hint: String::new(),
+                });
+            }
+        }
+
+        results
+    }
+
     /// Parse pom.xml to extract dependency identifiers.
     /// Returns list of "groupId:artifactId" strings.
     pub fn parse_pom_xml(&self) -> Vec<String> {
