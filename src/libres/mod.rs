@@ -257,7 +257,7 @@ impl LibraryResolver {
         let lock_path = self.root.join("Cargo.lock");
         match std::fs::read_to_string(&lock_path) {
             Ok(content) => {
-                match content.parse::<toml::Value>() {
+                match toml::from_str::<toml::Value>(&content) {
                     Ok(toml::Value::Table(root)) => {
                         let mut result = HashMap::new();
                         if let Some(toml::Value::Array(packages)) = root.get("package") {
