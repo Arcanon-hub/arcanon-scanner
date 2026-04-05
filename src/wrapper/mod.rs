@@ -279,13 +279,39 @@ fn replace_rust_format(s: &str) -> String {
 /// Build the initial wrapper map by seeding from pattern registry known functions (D-02).
 /// For each pattern detection, strip trailing "(" from match_str to get function name.
 /// E.g., "fetch(" → "fetch", "axios.get(" → "axios.get", "Redis(" → "Redis"
-fn seed_from_patterns(registry: &PatternRegistry, language: &str) -> WrapperMap {
+fn seed_from_patterns(
+    registry: &PatternRegistry,
+    language: &str,
+    files: &[FileContext],
+) -> WrapperMap {
     let mut map = WrapperMap::new();
+
+    // Pre-compute: which import gates are actually present in the scanned files?
+    // This prevents seeding from patterns whose libraries aren't used in this codebase.
+    let all_content: String = files
+        .iter()
+        .map(|f| f.content.as_ref())
+        .collect::<Vec<_>>()
+        .join("\n");
+
     for pattern in registry.patterns() {
         // Only seed from patterns matching the current language
         if !pattern.languages.is_empty() && !pattern.languages.iter().any(|l| l == language) {
             continue;
         }
+
+        // Check import gate: at least one gate string must appear in the scanned files.
+        // This prevents opcua patterns from seeding when no file imports opcua.
+        if !pattern.import_gate.is_empty() {
+            let gate_present = pattern
+                .import_gate
+                .iter()
+                .any(|gate| all_content.contains(gate));
+            if !gate_present {
+                continue;
+            }
+        }
+
         for detection in &pattern.detections {
             // Strip trailing "(" to get bare function name
             let name = detection.match_str.trim_end_matches('(').to_string();
@@ -303,7 +329,7 @@ fn seed_from_patterns(registry: &PatternRegistry, language: &str) -> WrapperMap 
                             file: "seed".to_string(),
                             line: 0,
                         },
-                        depth: 0, // seed functions are depth 0 (they ARE the known functions)
+                        depth: 0,
                     },
                 );
             }
@@ -652,7 +678,7 @@ pub fn build_wrapper_map(
     registry: &PatternRegistry,
     language: &str,
 ) -> WrapperMap {
-    let mut map = seed_from_patterns(registry, language);
+    let mut map = seed_from_patterns(registry, language, user_files);
     let initial_count = map.len();
     debug!("Wrapper map seeded with {} known functions", initial_count);
 
@@ -1010,7 +1036,7 @@ mod tests {
         // Create a minimal PatternRegistry for testing with empty patterns
         let registry = crate::patterns::PatternRegistry::from_patterns(vec![], "test".to_string());
 
-        let map = seed_from_patterns(&registry, "typescript");
+        let map = seed_from_patterns(&registry, "typescript", &[]);
         // With an empty registry, seeding should give us an empty map
         assert!(map.is_empty());
     }
