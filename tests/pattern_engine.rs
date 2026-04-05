@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arcanon_scanner::patterns::{
+use arcanon::patterns::{
     Detection, Pattern, PatternConfidence, PatternRegistry, TargetExtraction,
 };
-use arcanon_scanner::plugin::FileContext;
-use arcanon_scanner::types::Confidence;
+use arcanon::plugin::FileContext;
+use arcanon::types::Confidence;
 
 // =============================================================================
 // TASK 1: Pattern apply and extraction tests
@@ -326,14 +326,14 @@ fn test_user_pattern_overrides_remote_by_id() {
     let registry = PatternRegistry::from_patterns(vec![redis_pattern], "1.0".to_string());
 
     // Create override that changes protocol to valkey
-    let override_pattern = arcanon_scanner::config::PatternOverride {
+    let override_pattern = arcanon::config::PatternOverride {
         id: "redis-py".to_string(),
         name: "redis-py (valkey)".to_string(),
         description: "Updated protocol".to_string(),
         languages: vec!["python".to_string()],
         file_patterns: vec!["**/*.py".to_string()],
         import_gate: vec![],
-        detections: vec![arcanon_scanner::config::DetectionOverride {
+        detections: vec![arcanon::config::DetectionOverride {
             match_str: "Redis(".to_string(),
             kind: "connection".to_string(),
             protocol: "valkey".to_string(),
@@ -370,7 +370,7 @@ fn test_user_pattern_adds_new_id() {
     let registry = PatternRegistry::from_patterns(vec![redis_pattern], "1.0".to_string());
 
     // Add new pattern with different ID
-    let new_pattern = arcanon_scanner::config::PatternOverride {
+    let new_pattern = arcanon::config::PatternOverride {
         id: "my-internal-rpc".to_string(),
         name: "Internal RPC".to_string(),
         description: "Custom RPC".to_string(),
@@ -433,7 +433,7 @@ fn test_disabled_removes_pattern() {
 
 #[test]
 fn test_payload_metadata_fields_serialized() {
-    use arcanon_scanner::core::payload::ScanMetadata;
+    use arcanon::core::payload::ScanMetadata;
     use serde_json::json;
 
     let metadata = ScanMetadata {

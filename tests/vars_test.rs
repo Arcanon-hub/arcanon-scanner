@@ -1,4 +1,4 @@
-use arcanon_scanner::vars::{build_variable_store, VariableStore};
+use arcanon::vars::{build_variable_store, VariableStore};
 use std::path::PathBuf;
 
 fn write_file(dir: &std::path::Path, name: &str, content: &[u8]) -> PathBuf {

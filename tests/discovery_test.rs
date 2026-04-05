@@ -1,4 +1,4 @@
-use arcanon_scanner::discovery::walk_repo;
+use arcanon::discovery::walk_repo;
 use std::os::unix::fs::symlink;
 
 #[test]

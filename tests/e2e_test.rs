@@ -15,7 +15,7 @@ fn e2e_scan_fixture_repo_produces_valid_payload() {
     );
 
     // Build a minimal ScanConfig pointing at fixture_root
-    let scan_config = arcanon_scanner::core::scanner::ScannerConfig {
+    let scan_config = arcanon::core::scanner::ScannerConfig {
         root: fixture_root,
         dry_run: true, // don't actually upload
         output: None,
@@ -25,14 +25,14 @@ fn e2e_scan_fixture_repo_produces_valid_payload() {
         plugin_filter: None,
         exclude_patterns: vec![],
         service_overrides: HashMap::new(),
-        git_overrides: arcanon_scanner::core::scanner::GitOverrides::default(),
+        git_overrides: arcanon::core::scanner::GitOverrides::default(),
         user_pattern_overrides: vec![],
         disabled_patterns: vec![],
     };
 
     let payload = {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-        rt.block_on(arcanon_scanner::core::scanner::run(&scan_config))
+        rt.block_on(arcanon::core::scanner::run(&scan_config))
             .expect("Scanner should not fail on valid fixture directory")
     };
 

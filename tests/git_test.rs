@@ -1,4 +1,4 @@
-use arcanon_scanner::git::detect_git_context;
+use arcanon::git::detect_git_context;
 use serial_test::serial;
 
 #[test]
