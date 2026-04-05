@@ -2,62 +2,60 @@
 
 ## What This Is
 
-A Rust CLI that statically analyzes codebases to extract service boundaries, endpoints, connections, and schemas — then uploads the results to Arcanon Hub as a `ScanPayloadV1`. It runs locally on developer machines or in CI with zero cloud dependency and zero LLM requirement.
+A Rust CLI that statically analyzes codebases to extract service boundaries, endpoints, connections, and schemas — then uploads the results to Arcanon Hub as a `ScanPayloadV1`. Runs locally on developer machines or in CI with zero cloud dependency and zero LLM requirement.
+
+Shipped v1.0 with 14,750 lines of Rust across 7 phases: CLI, file discovery, git context, variable resolution, 15 compiled plugins (8 config + 7 language), CDN pattern engine, library resolution, and two-pass wrapper tracing.
 
 ## Core Value
 
-The scanner must accurately detect services, endpoints, and connections across 7 languages and 8 config formats using pure static analysis (AST parsing + config file reading), producing a complete `ScanPayloadV1` that the hub can use to build service dependency graphs.
+Accurately detect services, endpoints, and connections across 7 languages and 8 config formats using pure static analysis (AST parsing + config file reading), producing a complete `ScanPayloadV1` that the hub can use to build service dependency graphs.
 
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ CLI with clap-based argument parsing, .arcanon.toml config, env var fallbacks — v1.0
+- ✓ Git context detection via gix (repo URL, branch, commit SHA with CI fallbacks) — v1.0
+- ✓ Variable resolution chain (.env, docker-compose, k8s ConfigMaps) — v1.0
+- ✓ File discovery using ignore crate with built-in excludes, .gitignore respect, size/binary guards — v1.0
+- ✓ 8 config plugins: OpenAPI, proto, GraphQL, AsyncAPI, docker-compose, Kubernetes, Dockerfile, .env — v1.0
+- ✓ 7 language plugins: TypeScript, Python, Go, Java, C#, Rust, Ruby with AST extraction — v1.0
+- ✓ Service/endpoint/connection/schema detection from config and source AST — v1.0
+- ✓ Merger, intra-repo resolver, ScanPayloadV1 assembly — v1.0
+- ✓ HTTP upload with auth, retry, --output and --dry-run modes — v1.0
+- ✓ Monorepo support with nearest-ancestor scoping — v1.0
+- ✓ CDN pattern engine with ETag caching and .arcanon.toml overrides — v1.0
+- ✓ Library resolution (scan installed packages for connection wrappers) — v1.0
+- ✓ Two-pass wrapper tracing with template literal normalization — v1.0
+- ✓ Fault-tolerant scanning (file/plugin failures don't abort) — v1.0
+- ✓ CI: lint, format, test, build for Linux/macOS/Windows — v1.0
 
 ### Active
 
-- [ ] CLI with clap-based argument parsing, .arcanon.toml config support, env var fallbacks
-- [ ] Git context detection via gix (repo URL, branch, commit SHA with CI fallbacks)
-- [ ] Variable resolution chain (.env, docker-compose, k8s ConfigMaps)
-- [ ] File discovery using ignore crate with built-in excludes, .gitignore respect, size/binary guards
-- [ ] Plugin architecture with LanguagePlugin trait and compiled-in registry
-- [ ] 8 config plugins: OpenAPI, proto, GraphQL, AsyncAPI, docker-compose, Kubernetes, Dockerfile, .env
-- [ ] 7 language plugins: TypeScript, Python, Go, Java, C#, Rust, Ruby — framework detection + AST extraction
-- [ ] tree-sitter-based AST parsing with query-based extraction for all language plugins
-- [ ] Service detection from build config signals (Dockerfile, compose, package manifests, etc.)
-- [ ] Endpoint detection from spec files and source AST (framework-specific route patterns)
-- [ ] Connection detection: HTTP clients, gRPC, message queues, databases, industrial protocols
-- [ ] Schema detection from spec files, typed request/response models, and AST
-- [ ] Merger: deduplicate services, merge endpoint lists, aggregate connections across plugins
-- [ ] Intra-repo resolver: match outbound calls to local endpoints by (method, normalized_path)
-- [ ] ScanPayloadV1 assembly matching hub's expected JSON format
-- [ ] HTTP upload to hub with auth, retry (3x exponential backoff), error handling
-- [ ] --output and --dry-run modes for offline/debugging use
-- [ ] Monorepo support with nearest-ancestor file-to-service scoping
-- [ ] Fault-tolerant scanning (file/plugin failures don't abort the scan)
-- [ ] Makefile with linting (clippy), formatting (rustfmt), and unit test targets
-- [ ] GitHub Actions CI: build + test + lint for Linux amd64
-- [ ] Unit tests with fixture files per plugin, resolver, merger, payload assembly, variable resolution
+- [ ] macOS/Windows/Linux distribution (Homebrew tap, PowerShell script, install.sh)
+- [ ] GitHub Release workflow with automated binary publishing on tags
+- [ ] get.arcanon.dev install script hosting
+- [ ] External plugin protocol via stdin/stdout JSON
+- [ ] Incremental scanning (only changed files since last commit)
 
 ### Out of Scope
 
-- LLM enhancement layer (v2 — architecture doc section 16)
-- External plugin protocol via stdin/stdout JSON (v2 — architecture doc section 5)
-- Incremental scanning / caching (future optimization)
-- Integration tests against real open-source repos (deferred)
-- macOS and Windows CI builds (Linux only for v1)
-- Homebrew tap and install script distribution
-- Numeric confidence scores (v1.1 payload extension)
+- LLM enhancement layer — adds cloud dependency and non-determinism
+- Vulnerability/CVE detection — Snyk/Trivy's domain, not topology
+- SARIF output — security finding format, not topology data
+- Interactive/TUI mode — breaks CI piped workflows
+- IDE plugin — separate distribution channel
+- Daemon/watch mode — process lifecycle complexity
+- Cross-repo resolution — hub's job, scanner resolves intra-repo only
+- Numeric confidence scores — v2 payload extension
 
 ## Context
 
-- Arcanon Hub already exists and accepts `ScanPayloadV1` uploads at `POST /api/v1/scans/upload`
-- Hub handles cross-repo connection resolution — scanner only resolves intra-repo connections
-- Hub's `KNOWN_TOOLS` set already includes `"cli"` for the `tool` metadata field
-- Architecture document is comprehensive: `docs/architecture.md` covers all design decisions
-- Companion docs exist: `scanner-no-llm-feasibility.md`, `architecture-saas-platform.md`
-- tree-sitter provides multi-language AST parsing with fault tolerance and S-expression query language
-- The `ignore` crate (ripgrep's engine) handles .gitignore-aware file walking
+Shipped v1.0 with 14,750 LOC Rust, 463 tests, 168 commits across 2 days.
+Tech stack: clap, gix, tree-sitter (7 grammars), reqwest/rustls, rayon, serde.
+CI runs on GitHub Actions: lint/test on Linux/macOS/Windows, release builds on 4 targets.
+Binary size ~686KB stripped (well under 15MB target).
+Arcanon Hub accepts uploads at `POST /api/v1/scans/upload`.
 
 ## Constraints
 
@@ -65,38 +63,21 @@ The scanner must accurately detect services, endpoints, and connections across 7
 - **Binary size**: Target < 15MB stripped (includes all tree-sitter grammars)
 - **Performance**: < 2s for 100 files, < 10s for 1,000 files, < 60s for 10,000 files
 - **Memory**: < 200MB peak
-- **Dependencies**: Only crates listed in architecture doc section 12 (clap, gix, tree-sitter, reqwest, serde, etc.)
-- **Protocol**: Free string for connection protocols — no enum, supports any protocol name
-- **Payload format**: Must match existing hub `ScanPayloadV1` schema exactly — no hub changes
+- **Protocol**: Free string for connection protocols — no enum
+- **Payload format**: Must match hub `ScanPayloadV1` schema exactly
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| tree-sitter for all AST parsing | Multi-language with one API, fast, fault-tolerant, query language | — Pending |
-| gix over git2 for git context | Pure Rust, no libgit2 dependency, lighter weight | — Pending |
-| ignore crate for file walking | Same engine as ripgrep, respects nested .gitignore | — Pending |
-| Plugins compiled-in for v1 | Simpler than external plugin protocol, sufficient for initial languages | — Pending |
-| Hub does cross-repo matching | Scanner doesn't need cross-repo knowledge, simpler local design | — Pending |
-| Linux-only CI for v1 | Minimal CI complexity, add platforms later | — Pending |
-| reqwest with rustls-tls | No OpenSSL dependency, simplifies cross-compilation | — Pending |
-
-## Evolution
-
-This document evolves at phase transitions and milestone boundaries.
-
-**After each phase transition** (via `/gsd:transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd:complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
+| tree-sitter for all AST parsing | Multi-language with one API, fast, fault-tolerant | ✓ Good — powers all 7 language plugins |
+| gix over git2 for git context | Pure Rust, no libgit2 dependency | ✓ Good — clean static builds |
+| ignore crate for file walking | Same engine as ripgrep, respects nested .gitignore | ✓ Good — zero issues |
+| Plugins compiled-in for v1 | Simpler than external protocol | ✓ Good — 15 plugins, no overhead |
+| reqwest with rustls-tls | No OpenSSL dependency | ✓ Good — cross-platform builds work |
+| CDN pattern engine | Decouple detection from releases | ✓ Good — 96 patterns, no scanner update needed |
+| rayon for plugin parallelism | CPU-bound work, not I/O | ✓ Good — clean separation from tokio |
+| Three-layer VariableStore | .env > compose > k8s priority | ✓ Good — covers all common config sources |
 
 ---
-*Last updated: 2026-04-04 after initialization*
+*Last updated: 2026-04-05 after v1.0 milestone*

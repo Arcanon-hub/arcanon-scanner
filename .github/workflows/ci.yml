@@ -2,53 +2,42 @@ name: CI
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
-  ci:
-    name: CI
-    runs-on: arc-runner-set
-
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          targets: x86_64-unknown-linux-musl
           components: clippy, rustfmt
 
-      - name: Install musl linker
-        run: sudo apt-get install -y musl-tools
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          key: lint-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: lint-
 
-      - name: Lint
+      - name: Clippy
         run: cargo clippy -- -D warnings
 
-      - name: Format check
+      - name: Format
         run: cargo fmt --check
-
-      - name: Test
-        run: cargo test
-
-      - name: Build musl release binary
-        run: cargo build --release --target x86_64-unknown-linux-musl
 
       - name: Check tree-sitter ABI — no duplicates allowed
         run: |
@@ -56,16 +45,104 @@ jobs:
             echo "ERROR: duplicate tree-sitter versions detected — ABI mismatch risk"
             exit 1
           fi
-          echo "OK: no tree-sitter version duplicates"
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: macos
+            runner: macos-latest
+          - os: windows
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: test-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: test-${{ matrix.os }}-
+
+      - name: Test
+        run: cargo test
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: [lint, test]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            binary: target/x86_64-unknown-linux-musl/release/arcanon
+            artifact: arcanon-linux-amd64
+          - os: macos-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            binary: target/aarch64-apple-darwin/release/arcanon
+            artifact: arcanon-macos-arm64
+          - os: macos-amd64
+            runner: macos-13
+            target: x86_64-apple-darwin
+            binary: target/x86_64-apple-darwin/release/arcanon
+            artifact: arcanon-macos-amd64
+          - os: windows
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: target/x86_64-pc-windows-msvc/release/arcanon.exe
+            artifact: arcanon-windows-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: build-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: build-${{ matrix.os }}-
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Assert binary size under 15MB
+        shell: bash
         run: |
-          BINARY="target/x86_64-unknown-linux-musl/release/arcanon"
+          BINARY="${{ matrix.binary }}"
           SIZE=$(wc -c < "$BINARY")
           LIMIT=15728640
-          echo "Binary size: $SIZE bytes (limit: $LIMIT bytes)"
+          echo "Binary size: $SIZE bytes (limit: $LIMIT)"
           if [ "$SIZE" -ge "$LIMIT" ]; then
-            echo "ERROR: binary too large ($SIZE >= $LIMIT bytes)"
+            echo "ERROR: binary exceeds 15MB ($SIZE bytes)"
             exit 1
           fi
-          echo "OK: binary within size limit"
+
+      - name: Upload artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+          retention-days: 90
