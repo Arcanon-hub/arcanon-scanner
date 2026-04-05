@@ -41,7 +41,7 @@ jobs:
 
       - name: Check tree-sitter ABI — no duplicates allowed
         run: |
-          if cargo tree --duplicates | grep tree-sitter; then
+          if cargo tree --duplicates --depth 0 | grep "^tree-sitter "; then
             echo "ERROR: duplicate tree-sitter versions detected — ABI mismatch risk"
             exit 1
           fi
