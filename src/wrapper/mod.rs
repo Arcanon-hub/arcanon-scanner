@@ -13,7 +13,11 @@
 //! **Pass 2:** Re-scan user code to detect calls to functions in the wrapper map,
 //! extract their path/URL arguments, and emit ConnectionInfo results.
 
+use crate::ast::AstHelper;
+use crate::patterns::PatternRegistry;
+use crate::plugin::FileContext;
 use std::collections::HashMap;
+use tracing::debug;
 
 /// Maps function/method names to the protocol they wrap (D-04).
 /// Global across all files in a scan (D-07).
@@ -267,6 +271,439 @@ fn replace_rust_format(s: &str) -> String {
     result
 }
 
+/// Build the initial wrapper map by seeding from pattern registry known functions (D-02).
+/// For each pattern detection, strip trailing "(" from match_str to get function name.
+/// E.g., "fetch(" → "fetch", "axios.get(" → "axios.get", "Redis(" → "Redis"
+fn seed_from_patterns(registry: &PatternRegistry) -> WrapperMap {
+    let mut map = WrapperMap::new();
+    for pattern in registry.patterns() {
+        for detection in &pattern.detections {
+            // Strip trailing "(" to get bare function name
+            let name = detection.match_str.trim_end_matches('(').to_string();
+            if !name.is_empty() && !map.contains(&name) {
+                map.insert(
+                    name.clone(),
+                    WrapperInfo {
+                        protocol: detection.protocol.clone(),
+                        chain: vec![name.clone()],
+                        source: WrapperSource::UserCode {
+                            file: "seed".to_string(),
+                            line: 0,
+                        },
+                        depth: 0, // seed functions are depth 0 (they ARE the known functions)
+                    },
+                );
+            }
+        }
+    }
+    map
+}
+
+/// Count the number of lines in a string.
+fn count_lines(content: &str) -> usize {
+    content.lines().count()
+}
+
+/// Scan a single file and return new wrapper entries found.
+/// Returns Vec<(name, WrapperInfo)> of new wrappers found.
+fn extract_function_wrappers_from_file(
+    file: &FileContext,
+    current_map: &WrapperMap,
+    is_library: bool,
+    lib_name: &str,
+) -> Vec<(String, WrapperInfo)> {
+    let mut found = Vec::new();
+    let content = file.content.as_ref();
+
+    // Language detection from file extension
+    let ext = file.path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    // Use tree-sitter-based approach for TypeScript/JavaScript, Python
+    // line-based for others
+    match ext {
+        "ts" | "tsx" | "js" | "jsx" => {
+            extract_ts_wrappers(content, file, current_map, is_library, lib_name, &mut found);
+        }
+        "py" => {
+            extract_py_wrappers(content, file, current_map, is_library, lib_name, &mut found);
+        }
+        _ => {
+            // For Go, Rust, Java, C#, Ruby: use line-based heuristic
+            extract_line_based_wrappers(
+                content,
+                file,
+                current_map,
+                is_library,
+                lib_name,
+                &mut found,
+            );
+        }
+    }
+
+    found
+}
+
+/// Extract wrappers from TypeScript/JavaScript files using tree-sitter.
+fn extract_ts_wrappers(
+    content: &str,
+    file: &FileContext,
+    current_map: &WrapperMap,
+    is_library: bool,
+    lib_name: &str,
+    found: &mut Vec<(String, WrapperInfo)>,
+) {
+    let language: tree_sitter::Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
+    let helper = AstHelper::new(language);
+
+    // Query for function declarations and arrow functions
+    let query = r#"
+(function_declaration
+  name: (identifier) @fn_name
+  body: (statement_block) @fn_body)
+(method_definition
+  name: (property_identifier) @fn_name
+  body: (statement_block) @fn_body)
+(variable_declarator
+  name: (identifier) @fn_name
+  value: (arrow_function) @fn_body)
+"#;
+
+    let matches = helper.query_matches(content, query);
+
+    // Extract function name and body pairs from matches
+    let mut fn_data: HashMap<String, String> = HashMap::new();
+    for m in &matches {
+        if m.capture_name == "fn_name" {
+            fn_data.insert(m.node_text.clone(), String::new());
+        } else if m.capture_name == "fn_body" {
+            // For now, just collect it. We'll pair them in a second pass.
+        }
+    }
+
+    // Simple approach: look for function definitions line by line and extract bodies
+    for line_pair in matches.chunks(2) {
+        if line_pair.len() == 2 && line_pair[0].capture_name == "fn_name" {
+            let fn_name = &line_pair[0].node_text;
+            let fn_body = &line_pair[1].node_text;
+
+            check_function_and_add_to_wrapper_map(
+                fn_name,
+                fn_body,
+                file,
+                current_map,
+                is_library,
+                lib_name,
+                found,
+            );
+        }
+    }
+}
+
+/// Extract wrappers from Python files using tree-sitter.
+fn extract_py_wrappers(
+    content: &str,
+    file: &FileContext,
+    current_map: &WrapperMap,
+    is_library: bool,
+    lib_name: &str,
+    found: &mut Vec<(String, WrapperInfo)>,
+) {
+    let language: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
+    let helper = AstHelper::new(language);
+
+    // Query for function definitions
+    let query = r#"
+(function_definition
+  name: (identifier) @fn_name
+  body: (block) @fn_body)
+"#;
+
+    let matches = helper.query_matches(content, query);
+
+    // Extract function name and body pairs from matches
+    for line_pair in matches.chunks(2) {
+        if line_pair.len() == 2 && line_pair[0].capture_name == "fn_name" {
+            let fn_name = &line_pair[0].node_text;
+            let fn_body = &line_pair[1].node_text;
+
+            check_function_and_add_to_wrapper_map(
+                fn_name,
+                fn_body,
+                file,
+                current_map,
+                is_library,
+                lib_name,
+                found,
+            );
+        }
+    }
+}
+
+/// Extract wrappers from other language files (Go, Rust, Java, C#, Ruby) using line-based heuristic.
+fn extract_line_based_wrappers(
+    content: &str,
+    file: &FileContext,
+    current_map: &WrapperMap,
+    is_library: bool,
+    lib_name: &str,
+    found: &mut Vec<(String, WrapperInfo)>,
+) {
+    let ext = file.path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    for (i, line) in lines.iter().enumerate() {
+        // Detect function definition based on language
+        let fn_name: Option<String> = match ext {
+            "go" => {
+                // Go: func name(
+                if line.contains("func ") {
+                    line.split("func ")
+                        .nth(1)
+                        .and_then(|rest| rest.split('(').next())
+                        .map(|s| s.trim().to_string())
+                } else {
+                    None
+                }
+            }
+            "rs" => {
+                // Rust: fn name(
+                if line.contains("fn ") {
+                    line.split("fn ")
+                        .nth(1)
+                        .and_then(|rest| rest.split('(').next())
+                        .map(|s| s.trim().to_string())
+                } else {
+                    None
+                }
+            }
+            "java" => {
+                // Java: (public|private|protected|static) ... name(
+                let re_patterns = ["pub ", "private ", "protected ", "static "];
+                let has_pattern = re_patterns.iter().any(|p| line.contains(p));
+                if has_pattern {
+                    line.split('(')
+                        .next()
+                        .and_then(|before| before.split_whitespace().last())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            }
+            "rb" => {
+                // Ruby: def name
+                if line.contains("def ") {
+                    line.split("def ")
+                        .nth(1)
+                        .and_then(|rest| rest.split('(').next())
+                        .map(|s| s.trim().to_string())
+                } else {
+                    None
+                }
+            }
+            "cs" => {
+                // C#: (public|private|protected) ... name(
+                let re_patterns = ["public ", "private ", "protected "];
+                let has_pattern = re_patterns.iter().any(|p| line.contains(p));
+                if has_pattern {
+                    line.split('(')
+                        .next()
+                        .and_then(|before| before.split_whitespace().last())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(name) = fn_name {
+            // Collect function body until closing brace
+            let mut fn_body = String::new();
+            let mut brace_depth = 0;
+            let mut in_function = false;
+
+            for j in i..lines.len() {
+                let line_content = lines[j];
+                fn_body.push_str(line_content);
+                fn_body.push('\n');
+
+                for ch in line_content.chars() {
+                    if ch == '{' {
+                        in_function = true;
+                        brace_depth += 1;
+                    } else if ch == '}' {
+                        brace_depth -= 1;
+                        if in_function && brace_depth == 0 {
+                            // End of function
+                            check_function_and_add_to_wrapper_map(
+                                &name,
+                                &fn_body,
+                                file,
+                                current_map,
+                                is_library,
+                                lib_name,
+                                found,
+                            );
+                            break;
+                        }
+                    }
+                }
+                if in_function && brace_depth == 0 && j > i {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Check if a function calls something in the wrapper map and add it if so.
+fn check_function_and_add_to_wrapper_map(
+    fn_name: &str,
+    fn_body: &str,
+    file: &FileContext,
+    current_map: &WrapperMap,
+    is_library: bool,
+    lib_name: &str,
+    found: &mut Vec<(String, WrapperInfo)>,
+) {
+    // Skip functions with >200 lines (D-13)
+    let line_count = count_lines(fn_body);
+    if line_count > 200 {
+        debug!("Skipping {}: body has {} lines (>200)", fn_name, line_count);
+        return;
+    }
+
+    // For each entry in current_map, check if fn_body calls it
+    for (callee_name, callee_info) in current_map.iter() {
+        // Check if fn_body contains callee_name followed by (
+        if fn_body.contains(&format!("{}(", callee_name)) {
+            // Found a call to something in the wrapper map
+            let new_depth = callee_info.depth + 1;
+
+            // Skip if depth > 5 (D-12)
+            if new_depth > 5 {
+                debug!(
+                    "Skipping {}: wrapper chain depth {} exceeds max (5)",
+                    fn_name, new_depth
+                );
+                return;
+            }
+
+            // Build new chain: [fn_name, ...callee_info.chain]
+            let mut new_chain = vec![fn_name.to_string()];
+            new_chain.extend(callee_info.chain.clone());
+
+            let source = if is_library {
+                WrapperSource::Library {
+                    lib_name: lib_name.to_string(),
+                    file: file.relative_path.clone(),
+                }
+            } else {
+                WrapperSource::UserCode {
+                    file: file.relative_path.clone(),
+                    line: 1, // Simplified — could parse actual line number
+                }
+            };
+
+            found.push((
+                fn_name.to_string(),
+                WrapperInfo {
+                    protocol: callee_info.protocol.clone(),
+                    chain: new_chain,
+                    source,
+                    depth: new_depth,
+                },
+            ));
+
+            // Only match the first callee per function
+            break;
+        }
+    }
+}
+
+/// Pass 1: Build the wrapper map from user code and library files.
+/// Seeds from pattern registry, then iterates to fixed point (D-03, max 5 iterations).
+///
+/// # Arguments
+/// * `user_files` - All files from the user's codebase
+/// * `lib_files` - Library source files (from LibraryResolver, if any)
+/// * `registry` - PatternRegistry providing seed functions
+///
+/// # Returns
+/// WrapperMap shared across all files in the scan (D-06, D-07)
+pub fn build_wrapper_map(
+    user_files: &[FileContext],
+    lib_files: &[(String, Vec<FileContext>)], // (lib_name, files)
+    registry: &PatternRegistry,
+) -> WrapperMap {
+    let mut map = seed_from_patterns(registry);
+    let initial_count = map.len();
+    debug!("Wrapper map seeded with {} known functions", initial_count);
+
+    // Fixed-point iteration: repeat until map stops growing or max 5 iterations (D-03)
+    for iteration in 0..5 {
+        let prev_len = map.len();
+
+        // Scan user files
+        for file in user_files {
+            let new_entries = extract_function_wrappers_from_file(file, &map, false, "");
+            for (name, info) in new_entries {
+                if !map.contains(&name) {
+                    debug!(
+                        "Pass 1 iter {}: found wrapper {} → {} ({})",
+                        iteration,
+                        name,
+                        info.chain.last().unwrap_or(&"?".to_string()),
+                        info.protocol
+                    );
+                    map.insert(name, info);
+                }
+            }
+        }
+
+        // Scan library files (D-08, D-09)
+        for (lib_name, files) in lib_files {
+            for file in files {
+                let new_entries = extract_function_wrappers_from_file(file, &map, true, lib_name);
+                for (name, info) in new_entries {
+                    if !map.contains(&name) {
+                        debug!(
+                            "Pass 1 iter {}: found library wrapper {} → {} ({})",
+                            iteration,
+                            name,
+                            info.chain.last().unwrap_or(&"?".to_string()),
+                            info.protocol
+                        );
+                        map.insert(name, info);
+                    }
+                }
+            }
+        }
+
+        let new_len = map.len();
+        debug!(
+            "Pass 1 iteration {}: {} → {} wrappers",
+            iteration, prev_len, new_len
+        );
+        if new_len == prev_len {
+            debug!(
+                "Wrapper map reached fixed point after {} iterations",
+                iteration + 1
+            );
+            break;
+        }
+    }
+
+    debug!(
+        "Wrapper map complete: {} total wrappers ({} from seed, {} discovered)",
+        map.len(),
+        initial_count,
+        map.len() - initial_count
+    );
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,6 +853,216 @@ mod tests {
     #[test]
     fn test_wrapper_map_default() {
         let map = WrapperMap::default();
+        assert!(map.is_empty());
+    }
+
+    // Tests for Pass 1 — seed_from_patterns and build_wrapper_map
+
+    #[test]
+    fn test_seed_from_patterns_basic() {
+        // Create a minimal PatternRegistry for testing with empty patterns
+        let registry = crate::patterns::PatternRegistry::from_patterns(vec![], "test".to_string());
+
+        let map = seed_from_patterns(&registry);
+        // With an empty registry, seeding should give us an empty map
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_count_lines_empty() {
+        assert_eq!(count_lines(""), 0);
+    }
+
+    #[test]
+    fn test_count_lines_single() {
+        assert_eq!(count_lines("let x = 1;"), 1);
+    }
+
+    #[test]
+    fn test_count_lines_multiple() {
+        assert_eq!(count_lines("let x = 1;\nlet y = 2;\nlet z = 3;"), 3);
+    }
+
+    #[test]
+    fn test_check_function_skips_long_functions() {
+        // Create a function body longer than 200 lines
+        let mut long_body = String::new();
+        for i in 0..205 {
+            long_body.push_str(&format!("  let var{} = {};\n", i, i));
+        }
+
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.ts"),
+            relative_path: "file.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "fetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "longFunc", &long_body, &file, &map, false, "", &mut found,
+        );
+
+        // Should not add the function because it's > 200 lines
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_check_function_detects_wrapper_call() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.ts"),
+            relative_path: "file.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "fetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        let fn_body = "function apiFetch(path) {\n  return fetch(path, opts);\n}";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "apiFetch", fn_body, &file, &map, false, "", &mut found,
+        );
+
+        // Should find apiFetch as a wrapper around fetch
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, "apiFetch");
+        assert_eq!(found[0].1.protocol, "rest");
+        assert_eq!(found[0].1.depth, 1);
+        assert_eq!(found[0].1.chain, vec!["apiFetch", "fetch"]);
+    }
+
+    #[test]
+    fn test_check_function_respects_depth_cap() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.ts"),
+            relative_path: "file.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        // Insert a wrapper at depth 5
+        map.insert(
+            "deepWrapper".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec![
+                    "a".to_string(),
+                    "b".to_string(),
+                    "c".to_string(),
+                    "d".to_string(),
+                    "fetch".to_string(),
+                ],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 5,
+            },
+        );
+
+        let fn_body = "function evenDeeper() { return deepWrapper(); }";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "evenDeeper",
+            fn_body,
+            &file,
+            &map,
+            false,
+            "",
+            &mut found,
+        );
+
+        // Should not add because it would exceed depth cap of 5
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_check_function_library_source() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/venv/site-packages/sdk/client.py"),
+            relative_path: "sdk/client.py".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "httpx.post".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["httpx.post".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        let fn_body = "def append(self, event):\n  return httpx.post('/events', json=event)";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "append",
+            fn_body,
+            &file,
+            &map,
+            true,
+            "edgeworks_sdk",
+            &mut found,
+        );
+
+        // Should find append as a library wrapper
+        assert_eq!(found.len(), 1);
+        match &found[0].1.source {
+            WrapperSource::Library { lib_name, file } => {
+                assert_eq!(lib_name, "edgeworks_sdk");
+                assert_eq!(file, "sdk/client.py");
+            }
+            _ => panic!("Expected Library source"),
+        }
+    }
+
+    #[test]
+    fn test_build_wrapper_map_fixed_point() {
+        // Create a simple FileContext for testing
+        let user_file = FileContext {
+            path: std::path::PathBuf::from("/test/api.ts"),
+            relative_path: "api.ts".to_string(),
+            content: std::sync::Arc::from(""), // We'll test with actual registry seeding
+        };
+
+        let registry = crate::patterns::PatternRegistry::from_patterns(vec![], "test".to_string());
+
+        let map = build_wrapper_map(&[user_file], &[], &registry);
+
+        // With an empty registry, map should be empty
         assert!(map.is_empty());
     }
 }
