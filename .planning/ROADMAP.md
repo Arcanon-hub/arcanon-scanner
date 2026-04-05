@@ -105,7 +105,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Pipeline and Config Plugins | 5/5 | Complete | 2026-04-04 |
 | 4. Language Plugins and Hardening | 8/8 | Complete | 2026-04-04 |
 | 5. Pattern Engine | 5/5 | Complete | 2026-04-05 |
-| 6. Library Resolution | 0/TBD | Not started | - |
+| 6. Library Resolution | 0/3 | Not started | - |
 
 ### Phase 5: Pattern Engine
 **Goal**: Scanner fetches detection patterns from https://patterns.arcanon.dev/v1/patterns.json at startup, caches locally, merges with .arcanon.toml overrides, and applies them alongside compiled plugins — so new library detections never require a scanner release
@@ -137,4 +137,9 @@ Plans:
   4. Library scan results are cached per-scan (same library imported in 10 files = 1 scan)
   5. Missing environment logs info and continues with CDN patterns only (no crash)
   6. `arcanon --dry-run` on a repo with installed custom SDK produces ConnectionInfo findings
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — LibraryResolver module: environment discovery, lock file parsing, blocklist, per-scan cache
+- [ ] 06-02-PLAN.md — Scanner wiring: read_manifest_deps() + library resolution in language_map loop with LRES-06 extraction_method
+- [ ] 06-03-PLAN.md — Integration tests: 6 tests covering all LRES requirements
