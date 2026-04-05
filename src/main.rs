@@ -13,6 +13,7 @@ mod plugin;
 mod types;
 mod upload;
 mod vars;
+mod wrapper;
 
 /// Static service topology scanner for Arcanon Hub
 #[derive(Parser, Debug)]

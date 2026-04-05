@@ -12,6 +12,7 @@ use crate::patterns::{PatternRegistry, PatternSource};
 use crate::plugin::{default_plugins, ExtractionContext, FileContext, LanguagePlugin};
 use crate::types::ExtractionResult;
 use crate::vars::build_variable_store;
+use crate::{wrapper};
 use anyhow::Result;
 use globset::GlobSetBuilder;
 use rayon::prelude::*;
@@ -288,6 +289,37 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
                             connections: libres_connections,
                             ..Default::default()
                         });
+                    }
+                }
+            }
+        }
+    }
+
+    // Wrapper tracing — two-pass call graph analysis (Phase 7)
+    // Build wrapper map once across all files; detect calls per language
+    {
+        // Collect library source files for library wrapper scanning (D-08, D-09)
+        // We reuse the venv/node_modules discovery from libres but read files as FileContext.
+        // For now, pass empty lib_files (user-code wrappers cover the primary use case).
+        // Library source scanning can be enhanced in a follow-up without API change.
+        let lib_files_for_wrapper: Vec<(String, Vec<FileContext>)> = Vec::new();
+
+        let wrapper_map = wrapper::build_wrapper_map(&all_files, &lib_files_for_wrapper, &pattern_registry);
+
+        if wrapper_map.len() > 0 {
+            debug!("Wrapper map built: {} total entries", wrapper_map.len());
+
+            for (language, patterns) in language_map {
+                let lang_files = filter_files_by_patterns(&all_files, patterns);
+                if !lang_files.is_empty() {
+                    let wrapper_result = wrapper::detect_wrapper_calls(&lang_files, &wrapper_map, &service_roots);
+                    if !wrapper_result.connections.is_empty() {
+                        debug!(
+                            "Wrapper tracing: {} {} connections",
+                            wrapper_result.connections.len(),
+                            language
+                        );
+                        pattern_results.push(wrapper_result);
                     }
                 }
             }
