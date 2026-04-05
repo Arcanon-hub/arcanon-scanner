@@ -7,6 +7,7 @@ mod config;
 mod core;
 mod discovery;
 mod git;
+mod libres;
 mod patterns;
 mod plugin;
 mod types;

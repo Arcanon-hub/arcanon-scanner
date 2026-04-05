@@ -7,6 +7,7 @@
 use crate::core::{merger, payload, resolver};
 use crate::discovery::walk_repo;
 use crate::git::detect_git_context;
+use crate::libres::{read_manifest_deps, LibraryResolver};
 use crate::patterns::{PatternRegistry, PatternSource};
 use crate::plugin::{default_plugins, ExtractionContext, FileContext, LanguagePlugin};
 use crate::types::ExtractionResult;
@@ -202,6 +203,9 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
 
     info!("Plugin execution complete: {} results", all_results.len());
 
+    // Library resolution — one resolver per scan, shared cache (D-10)
+    let mut lib_resolver = LibraryResolver::new(&config.root);
+
     // Step 7: Run pattern engine for each language (PTRN-05, PTRN-06)
     let language_map: &[(&str, &[&str])] = &[
         ("typescript", &["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]),
@@ -217,10 +221,75 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     for (language, patterns) in language_map {
         let lang_files = filter_files_by_patterns(&all_files, patterns);
         if !lang_files.is_empty() {
+            // Run pattern engine on user source files
             let result = pattern_registry.apply_all(&lang_files, language, &service_roots);
             if !result.connections.is_empty() {
                 debug!("Pattern engine: {} {} connections", result.connections.len(), language);
                 pattern_results.push(result);
+            }
+
+            // Run library resolution on production deps from manifest (LRES-01/02/03)
+            let dep_names = read_manifest_deps(&config.root, language);
+            if !dep_names.is_empty() {
+                let resolved_libs = lib_resolver.resolve_for_language(
+                    &pattern_registry,
+                    language,
+                    &dep_names,
+                    &service_roots,
+                );
+
+                if !resolved_libs.is_empty() {
+                    // Convert ResolvedLibrary findings to ConnectionInfo per import location.
+                    // We emit one ConnectionInfo per (library, protocol, import site).
+                    // Import sites: scan lang_files for lines importing this library name.
+                    let mut libres_connections: Vec<crate::types::ConnectionInfo> = Vec::new();
+
+                    for resolved in &resolved_libs {
+                        for protocol in &resolved.protocols {
+                            // Find import lines in user source files
+                            for file in &lang_files {
+                                for (line_no, line) in file.content.lines().enumerate() {
+                                    let trimmed = line.trim();
+                                    // Check if this line imports the library (any form)
+                                    if line_contains_import(trimmed, &resolved.lib_name) {
+                                        libres_connections.push(crate::types::ConnectionInfo {
+                                            source_service: crate::plugin::scope_to_service(
+                                                &file.path,
+                                                &service_roots,
+                                            )
+                                            .unwrap_or("")
+                                            .to_string(),
+                                            target_name: String::new(),
+                                            protocol: protocol.clone(),
+                                            method: None,
+                                            path: None,
+                                            source_file: format!("{}:{}", file.relative_path, line_no + 1),
+                                            confidence: crate::types::Confidence::Medium, // LRES-06
+                                            extraction_method: format!(
+                                                "library_resolution:{}→{}",
+                                                resolved.lib_name, protocol
+                                            ),
+                                            evidence: Some(trimmed.to_string()),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !libres_connections.is_empty() {
+                        debug!(
+                            "Library resolution: {} connections from {} libraries ({})",
+                            libres_connections.len(),
+                            resolved_libs.len(),
+                            language
+                        );
+                        pattern_results.push(crate::types::ExtractionResult {
+                            connections: libres_connections,
+                            ..Default::default()
+                        });
+                    }
+                }
             }
         }
     }
@@ -381,6 +450,55 @@ fn filter_files_by_patterns(files: &[FileContext], patterns: &[&str]) -> Vec<Fil
 /// Generate an RFC3339 timestamp for the current time.
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+/// Check if a source line is an import statement for the given library name.
+/// Handles Python (import/from), Node (require/import), Ruby (require), Rust (use/extern crate), Go (import), Java/C# (using/import).
+fn line_contains_import(line: &str, lib_name: &str) -> bool {
+    // Normalize lib name: replace _ with - and vice versa for matching
+    let normalized = lib_name.replace('-', "_");
+    let hyphenated = lib_name.replace('_', "-");
+
+    let candidates = [lib_name, normalized.as_str(), hyphenated.as_str()];
+
+    for candidate in candidates {
+        // Python: import lib_name / from lib_name import ...
+        if line.starts_with("import ") && line.contains(candidate) {
+            return true;
+        }
+        if line.starts_with("from ") && line.contains(candidate) {
+            return true;
+        }
+        // Node: require('lib') / import ... from 'lib'
+        if line.contains("require(") && line.contains(candidate) {
+            return true;
+        }
+        if line.contains("from '") && line.contains(candidate) {
+            return true;
+        }
+        if line.contains("from \"") && line.contains(candidate) {
+            return true;
+        }
+        // Ruby: require 'lib'
+        if line.starts_with("require '") && line.contains(candidate) {
+            return true;
+        }
+        if line.starts_with("require \"") && line.contains(candidate) {
+            return true;
+        }
+        // Rust: use lib_name:: / extern crate lib_name
+        if line.starts_with("use ") && line.contains(candidate) {
+            return true;
+        }
+        if line.starts_with("extern crate ") && line.contains(candidate) {
+            return true;
+        }
+        // Go: import block handled as content contains check
+        if line.contains('"') && line.contains(candidate) && (line.trim_start().starts_with('"') || line.contains("import ")) {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]

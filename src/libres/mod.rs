@@ -61,6 +61,7 @@ const BLOCKLIST: &[&str] = &[
 ];
 
 /// A library resolved to contain connections with known protocols.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ResolvedLibrary {
     /// Library name from manifest.
@@ -605,6 +606,7 @@ impl LibraryResolver {
 
     /// Parse pom.xml to extract dependency identifiers.
     /// Returns list of "groupId:artifactId" strings.
+    #[allow(dead_code)]
     pub fn parse_pom_xml(&self) -> Vec<String> {
         let pom_path = self.root.join("pom.xml");
         match std::fs::read_to_string(&pom_path) {
@@ -963,14 +965,14 @@ fn read_ruby_deps(root: &Path) -> Vec<String> {
             }
 
             // Lines starting with gem '...' or gem "..."
-            if trimmed.starts_with("gem '") {
-                if let Some(end) = trimmed[5..].find('\'') {
-                    let gem_name = &trimmed[5..5 + end];
+            if let Some(rest) = trimmed.strip_prefix("gem '") {
+                if let Some(end) = rest.find('\'') {
+                    let gem_name = &rest[..end];
                     deps.push(gem_name.to_string());
                 }
-            } else if trimmed.starts_with("gem \"") {
-                if let Some(end) = trimmed[5..].find('"') {
-                    let gem_name = &trimmed[5..5 + end];
+            } else if let Some(rest) = trimmed.strip_prefix("gem \"") {
+                if let Some(end) = rest.find('"') {
+                    let gem_name = &rest[..end];
                     deps.push(gem_name.to_string());
                 }
             }
