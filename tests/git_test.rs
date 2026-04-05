@@ -43,7 +43,7 @@ fn test_repo_name_derivation() {
     // Test the URL parsing logic for repo_name
     // We test this by checking that detect_git_context on a dir with no git
     // uses the dir name as fallback
-    let dir = tempfile::TempDir::new_in("/tmp").unwrap();
+    let dir = tempfile::tempdir().unwrap();
     // The dir has a system-assigned name — just verify it's non-empty
     let ctx = detect_git_context(dir.path()).unwrap();
     assert!(!ctx.repo_name.is_empty());
