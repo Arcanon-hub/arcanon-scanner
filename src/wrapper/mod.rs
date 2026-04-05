@@ -36,6 +36,7 @@ pub struct WrapperInfo {
     /// Call chain: ["apiFetch", "fetch"] — innermost last
     pub chain: Vec<String>,
     /// Where the wrapper was defined
+    #[allow(dead_code)]
     pub source: WrapperSource,
     /// Depth in the wrapper chain (D-12: max 5)
     pub depth: usize,
@@ -43,6 +44,7 @@ pub struct WrapperInfo {
 
 /// Where a wrapper function was found.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum WrapperSource {
     UserCode { file: String, line: usize },
     Library { lib_name: String, file: String },
@@ -63,6 +65,7 @@ impl WrapperMap {
         self.wrappers.contains_key(name)
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, name: &str) -> Option<&WrapperInfo> {
         self.wrappers.get(name)
     }
@@ -100,9 +103,9 @@ pub fn normalize_template_literal(raw: &str) -> String {
     let s = raw.trim_matches('`');
 
     // Strip outer f"..." Python f-string delimiters
-    let s = if s.starts_with("f\"") && s.ends_with('"') {
-        &s[2..s.len() - 1]
-    } else if s.starts_with("f'") && s.ends_with('\'') {
+    let s = if (s.starts_with("f\"") && s.ends_with('"'))
+        || (s.starts_with("f'") && s.ends_with('\''))
+    {
         &s[2..s.len() - 1]
     } else {
         s
@@ -524,9 +527,10 @@ fn extract_line_based_wrappers(
             let mut fn_body = String::new();
             let mut brace_depth = 0;
             let mut in_function = false;
+            let mut line_count = 0;
 
-            for j in i..lines.len() {
-                let line_content = lines[j];
+            for line_content in &lines[i..] {
+                line_count += 1;
                 fn_body.push_str(line_content);
                 fn_body.push('\n');
 
@@ -551,7 +555,7 @@ fn extract_line_based_wrappers(
                         }
                     }
                 }
-                if in_function && brace_depth == 0 && j > i {
+                if in_function && brace_depth == 0 && line_count > 1 {
                     break;
                 }
             }

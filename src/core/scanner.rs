@@ -306,7 +306,7 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
 
         let wrapper_map = wrapper::build_wrapper_map(&all_files, &lib_files_for_wrapper, &pattern_registry);
 
-        if wrapper_map.len() > 0 {
+        if !wrapper_map.is_empty() {
             debug!("Wrapper map built: {} total entries", wrapper_map.len());
 
             for (language, patterns) in language_map {
