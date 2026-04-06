@@ -310,6 +310,39 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
         }
     }
 
+    // Deduplicate pattern + wrapper connections: prefer pattern-engine over wrapper_trace
+    // when both detect the same (source_file_base, protocol) pair (WRAP-11).
+    // source_file for wrapper has format "path:line" — strip line suffix for comparison.
+    {
+        use std::collections::HashSet;
+        // First pass: collect all (source_file_base, protocol) keys from non-wrapper results
+        let mut pattern_keys: HashSet<(String, String)> = HashSet::new();
+        for result in &pattern_results {
+            for conn in &result.connections {
+                if !conn.extraction_method.starts_with("wrapper_trace:") {
+                    let base = conn.source_file.split(':').next().unwrap_or(&conn.source_file).to_string();
+                    pattern_keys.insert((base, conn.protocol.clone()));
+                }
+            }
+        }
+
+        // Second pass: filter wrapper connections that duplicate a pattern-engine connection
+        if !pattern_keys.is_empty() {
+            for result in &mut pattern_results {
+                result.connections.retain(|conn| {
+                    if conn.extraction_method.starts_with("wrapper_trace:") {
+                        let base = conn.source_file.split(':').next().unwrap_or(&conn.source_file).to_string();
+                        let key = (base, conn.protocol.clone());
+                        // Retain wrapper connection only if there is NO pattern-engine match
+                        !pattern_keys.contains(&key)
+                    } else {
+                        true
+                    }
+                });
+            }
+        }
+    }
+
     // Merge plugin results + pattern results together (PTRN-06)
     let combined_results: Vec<ExtractionResult> =
         all_results.into_iter().chain(pattern_results).collect();
