@@ -40,7 +40,12 @@
   3. Python source files with triple-quoted docstrings do not produce pattern matches on text inside those docstrings
   4. Scanning a Python project that calls `CoreV1Api(` or `AppsV1Api(` produces a kubernetes connection via the py-kubernetes pattern
   5. Regression tests for all four fixes pass under `cargo test`
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Enforce file_patterns glob filter and skip Python docstrings in apply() (DACC-02, DACC-04)
+- [ ] 08-02-PLAN.md — Regression tests for py-opcua narrowing and py-kubernetes pattern (DACC-01, DACC-05)
+- [ ] 08-03-PLAN.md — Combined cross-fix integration tests and full suite verification (TEST-01)
 
 ### Phase 9: Resolver and Tech Debt
 **Goal**: Library resolution emits one finding per library instead of per import line, NestJS endpoint paths are correct in polyglot fixtures, and [services] config overrides are respected
@@ -80,6 +85,6 @@ Plans:
 | 5. Pattern Engine | v1.0 | 5/5 | Complete | 2026-04-05 |
 | 6. Library Resolution | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 7. Wrapper Tracing | v1.0 | 3/3 | Complete | 2026-04-05 |
-| 8. Pattern Engine Accuracy | v1.1 | 0/TBD | Not started | - |
+| 8. Pattern Engine Accuracy | v1.1 | 0/3 | Not started | - |
 | 9. Resolver and Tech Debt | v1.1 | 0/3 | Not started | - |
 | 10. Integration Validation | v1.1 | 0/TBD | Not started | - |
