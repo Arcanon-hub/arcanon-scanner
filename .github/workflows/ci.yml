@@ -7,7 +7,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -139,10 +139,49 @@ jobs:
             exit 1
           fi
 
+      - name: Package binary
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          BINARY="${{ matrix.binary }}"
+          ARTIFACT="${{ matrix.artifact }}"
+          if [[ "$BINARY" == *.exe ]]; then
+            7z a "${ARTIFACT}.zip" "$BINARY"
+          else
+            tar -czf "${ARTIFACT}.tar.gz" -C "$(dirname "$BINARY")" "$(basename "$BINARY")"
+          fi
+
       - name: Upload artifact
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.binary }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+          if-no-files-found: ignore
           retention-days: 90
+
+  release:
+    name: Release
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          ASSETS=""
+          for f in artifacts/**/*.tar.gz artifacts/**/*.zip; do
+            [ -f "$f" ] && ASSETS="$ASSETS $f"
+          done
+          gh release create "$TAG" $ASSETS \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --generate-notes
