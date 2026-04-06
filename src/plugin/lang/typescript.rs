@@ -705,6 +705,59 @@ export class UsersController {
     }
 
     #[test]
+    fn test_nestjs_route_with_import_statement() {
+        // Mimics the exact polyglot fixture content (service-a/src/users.ts)
+        let plugin = TypeScriptPlugin;
+
+        let package_json = FileContext {
+            path: std::path::PathBuf::from("/repo/service-a/package.json"),
+            relative_path: "service-a/package.json".to_string(),
+            content: Arc::from(
+                r#"{"dependencies": {"@nestjs/core": "^10.0.0", "@nestjs/common": "^10.0.0"}}"#,
+            ),
+        };
+
+        let users_file = FileContext {
+            path: std::path::PathBuf::from("/repo/service-a/src/users.ts"),
+            relative_path: "service-a/src/users.ts".to_string(),
+            content: Arc::from(
+                r#"import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('/users')
+export class UsersController {
+  @Get('/:id')
+  getUser(id: string) {
+    return { id };
+  }
+
+  @Post('/')
+  createUser() {
+    return {};
+  }
+}"#,
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![package_json, users_file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.endpoints.is_empty(),
+            "Should detect NestJS routes from fixture content"
+        );
+        let get_ep = result.endpoints.iter().find(|e| e.method == "GET");
+        assert!(get_ep.is_some(), "Should find GET endpoint");
+        let get_ep = get_ep.unwrap();
+        assert_eq!(get_ep.path, "/users/:id", "GET path must be /users/:id");
+    }
+
+    #[test]
     fn test_fastify_route_detection() {
         let plugin = TypeScriptPlugin;
 

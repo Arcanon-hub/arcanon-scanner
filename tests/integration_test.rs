@@ -80,21 +80,18 @@ fn test_polyglot_fixture_end_to_end() {
         .flat_map(|s| s.exposes.iter())
         .collect();
 
-    // DETQ-05: NestJS two-phase endpoint — GET /users/:id
-    // Note: NestJS controller prefix joining may not work on all fixture layouts.
-    // The core NestJS extraction is tested in unit tests (test_nestjs_route_detection).
+    // DETQ-05/DEBT-01: NestJS two-phase extraction must produce GET /users/:id
     let nestjs_endpoint = all_endpoints
         .iter()
-        .find(|e| e.path.contains("users") && e.method == "GET");
-    if nestjs_endpoint.is_none() {
-        eprintln!(
-            "WARN: NestJS route not found in polyglot fixture. Endpoints: {:?}",
-            all_endpoints
-                .iter()
-                .map(|e| (&e.method, &e.path))
-                .collect::<Vec<_>>()
-        );
-    }
+        .find(|e| e.path == "/users/:id" && e.method == "GET");
+    assert!(
+        nestjs_endpoint.is_some(),
+        "NestJS GET /users/:id not found. Endpoints: {:?}",
+        all_endpoints
+            .iter()
+            .map(|e| (&e.method, &e.path))
+            .collect::<Vec<_>>()
+    );
 
     // LPLU-02: FastAPI endpoint — GET /items
     let fastapi_endpoint = all_endpoints
@@ -142,5 +139,97 @@ fn test_polyglot_fixture_files_exist() {
     assert!(
         !root.join("lib/Dockerfile").exists(),
         "lib/ must NOT have Dockerfile"
+    );
+}
+
+/// Diagnostic test: directly verify TypeScript plugin extracts NestJS routes from fixture files.
+/// This isolates the extraction from the full scanner pipeline.
+#[test]
+fn test_nestjs_extraction_from_fixture() {
+    use arcanon::plugin::{ExtractionContext, FileContext, LanguagePlugin};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/polyglot");
+    let pkg_path = fixture_root.join("service-a/package.json");
+    let ts_path = fixture_root.join("service-a/src/users.ts");
+
+    let pkg_content = std::fs::read_to_string(&pkg_path).expect("package.json must be readable");
+    let ts_content = std::fs::read_to_string(&ts_path).expect("users.ts must be readable");
+
+    let pkg_file = FileContext {
+        path: pkg_path.clone(),
+        relative_path: "service-a/package.json".to_string(),
+        content: Arc::from(pkg_content.as_str()),
+    };
+    let ts_file = FileContext {
+        path: ts_path.clone(),
+        relative_path: "service-a/src/users.ts".to_string(),
+        content: Arc::from(ts_content.as_str()),
+    };
+
+    let mut service_roots = HashMap::new();
+    service_roots.insert(fixture_root.join("service-a"), "service-a".to_string());
+
+    let ctx = ExtractionContext {
+        files: vec![pkg_file, ts_file],
+        vars: Arc::new(arcanon::vars::VariableStore::new()),
+        root: fixture_root,
+        service_roots,
+    };
+
+    let plugin = arcanon::plugin::lang::typescript::TypeScriptPlugin;
+    let result = plugin.extract(&ctx);
+
+    eprintln!("Endpoints from fixture: {}", result.endpoints.len());
+    for ep in &result.endpoints {
+        eprintln!("  {} {} (service={})", ep.method, ep.path, ep.service_name);
+    }
+
+    let get_ep = result
+        .endpoints
+        .iter()
+        .find(|e| e.method == "GET" && e.path == "/users/:id");
+    assert!(
+        get_ep.is_some(),
+        "Expected GET /users/:id from fixture. Got: {:?}",
+        result
+            .endpoints
+            .iter()
+            .map(|e| (&e.method, &e.path))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        get_ep.unwrap().service_name,
+        "service-a",
+        "Endpoint must be scoped to service-a"
+    );
+}
+
+/// Diagnostic: verify walk_repo finds the TypeScript files in the polyglot fixture.
+#[test]
+fn test_walk_repo_finds_ts_files() {
+    use arcanon::discovery::walk_repo;
+
+    let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/polyglot");
+
+    let files = walk_repo(&fixture_root, &[]).expect("walk_repo should succeed");
+    let relative: Vec<String> = files
+        .iter()
+        .map(|p| {
+            p.strip_prefix(&fixture_root)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+
+    eprintln!("Files found by walk_repo: {:?}", relative);
+
+    let has_users_ts = relative.iter().any(|p| p.contains("users.ts"));
+    assert!(
+        has_users_ts,
+        "walk_repo must find service-a/src/users.ts. Found: {:?}",
+        relative
     );
 }

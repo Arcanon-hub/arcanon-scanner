@@ -1,0 +1,3 @@
+# Fixtures need JSON files (package.json for framework detection tests).
+# Override the root *.json exclusion for all files in this directory.
+!*.json
