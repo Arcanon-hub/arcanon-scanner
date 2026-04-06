@@ -6,6 +6,7 @@
 
 use crate::plugin::FileContext;
 use crate::types::{Confidence, ConnectionInfo, ExtractionResult};
+use globset::GlobSetBuilder;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -58,7 +59,6 @@ pub struct Pattern {
     #[serde(default)]
     pub languages: Vec<String>,
     #[serde(default)]
-    #[allow(dead_code)]
     pub file_patterns: Vec<String>,
     pub import_gate: Vec<String>,
     pub detections: Vec<Detection>,
@@ -292,6 +292,28 @@ impl PatternRegistry {
                 continue;
             }
 
+            // file_patterns filter — if set, file path must match at least one glob (DACC-02)
+            // TODO: consider caching compiled GlobSets per-pattern for large repos
+            if !pattern.file_patterns.is_empty() {
+                let mut builder = GlobSetBuilder::new();
+                for pat in &pattern.file_patterns {
+                    if let Ok(glob) = globset::Glob::new(pat) {
+                        builder.add(glob);
+                    }
+                }
+                match builder.build() {
+                    Ok(gs) => {
+                        if !gs.is_match(&file.relative_path) {
+                            continue;
+                        }
+                    }
+                    Err(_) => {
+                        // Malformed globs: skip this pattern's file_patterns check entirely
+                        // (do not skip the pattern — be permissive on broken config)
+                    }
+                }
+            }
+
             // Import gate check
             if !pattern.import_gate.is_empty() {
                 let gate_passed = pattern
@@ -303,9 +325,40 @@ impl PatternRegistry {
                 }
             }
 
+            // Triple-quote docstring state for Python — tracks whether we are inside a
+            // multi-line """ or ''' block. Reset per-pattern since apply() outer loop
+            // processes each pattern independently.
+            let mut in_triple_quote = false;
+
             // Line-by-line scan
             for (line_number, line) in file.content.lines().enumerate() {
                 let trimmed = line.trim();
+
+                // Python docstring / triple-quote skip (DACC-04)
+                // Only applies to Python — other languages use """ for other purposes
+                if language == "python" {
+                    let dq = trimmed.contains("\"\"\"");
+                    let sq = trimmed.contains("'''");
+                    if dq || sq {
+                        let marker = if dq { "\"\"\"" } else { "'''" };
+                        let count = trimmed.matches(marker).count();
+                        if in_triple_quote {
+                            // This line closes the block (possibly also re-opens one)
+                            in_triple_quote = count % 2 == 0; // odd count means still open
+                            continue; // skip the closing line itself
+                        } else if count >= 2 {
+                            // Opens and closes on the same line — skip this line, stay outside
+                            continue;
+                        } else {
+                            // Opens a new block
+                            in_triple_quote = true;
+                            continue;
+                        }
+                    }
+                    if in_triple_quote {
+                        continue;
+                    }
+                }
 
                 // Skip comments and string literals to avoid false positives
                 // on test data, documentation, and embedded code snippets
@@ -1042,5 +1095,218 @@ mod tests {
 
         let result = registry.apply_all(&files, "python", &HashMap::new());
         assert_eq!(result.connections.len(), 2);
+    }
+
+    // --- DACC-02: file_patterns glob filter tests ---
+
+    #[test]
+    fn test_file_patterns_skips_wrong_extension() {
+        // Pattern restricted to *.ts should NOT fire on a .py file
+        let pattern = Pattern {
+            id: "ts-only".to_string(),
+            name: "ts-only".to_string(),
+            description: "test".to_string(),
+            languages: vec!["typescript".to_string(), "python".to_string()],
+            file_patterns: vec!["**/*.ts".to_string()],
+            import_gate: vec![],
+            detections: vec![Detection {
+                match_str: "Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "grpc".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let file = FileContext {
+            path: PathBuf::from("/repo/test.py"),
+            relative_path: "test.py".to_string(),
+            content: std::sync::Arc::from("Client(\"grpc://host\")"),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(findings.len(), 0, "file_patterns *.ts should skip .py file");
+    }
+
+    #[test]
+    fn test_file_patterns_empty_matches_all() {
+        let pattern = Pattern {
+            id: "any-lang".to_string(),
+            name: "any-lang".to_string(),
+            description: "test".to_string(),
+            languages: vec!["python".to_string()],
+            file_patterns: vec![], // empty = match all
+            import_gate: vec![],
+            detections: vec![Detection {
+                match_str: "Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "grpc".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let file = FileContext {
+            path: PathBuf::from("/repo/test.py"),
+            relative_path: "test.py".to_string(),
+            content: std::sync::Arc::from("Client(\"host\")"),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(findings.len(), 1, "empty file_patterns should match any file");
+    }
+
+    #[test]
+    fn test_file_patterns_matches_correct_extension() {
+        let pattern = Pattern {
+            id: "py-only".to_string(),
+            name: "py-only".to_string(),
+            description: "test".to_string(),
+            languages: vec!["python".to_string()],
+            file_patterns: vec!["**/*.py".to_string()],
+            import_gate: vec![],
+            detections: vec![Detection {
+                match_str: "Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "grpc".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let file = FileContext {
+            path: PathBuf::from("/repo/services/api/test.py"),
+            relative_path: "services/api/test.py".to_string(),
+            content: std::sync::Arc::from("Client(\"host\")"),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(
+            findings.len(),
+            1,
+            "file_patterns **/*.py should match services/api/test.py"
+        );
+    }
+
+    // --- DACC-04: Python triple-quoted docstring skip tests ---
+
+    #[test]
+    fn test_python_docstring_double_quote_skipped() {
+        // Text INSIDE a triple-quote docstring must not produce findings
+        let pattern = Pattern {
+            id: "test-doc".to_string(),
+            name: "test".to_string(),
+            description: "test".to_string(),
+            languages: vec!["python".to_string()],
+            file_patterns: vec![],
+            import_gate: vec![],
+            detections: vec![Detection {
+                match_str: "Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let content = "def connect():\n    \"\"\"\n    Example: Client(url) connects to OPC-UA\n    \"\"\"\n    pass";
+        let file = FileContext {
+            path: PathBuf::from("/repo/client.py"),
+            relative_path: "client.py".to_string(),
+            content: std::sync::Arc::from(content),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(findings.len(), 0, "Client( inside docstring must be skipped");
+    }
+
+    #[test]
+    fn test_python_docstring_single_quote_skipped() {
+        let pattern = Pattern {
+            id: "test-doc".to_string(),
+            name: "test".to_string(),
+            description: "test".to_string(),
+            languages: vec!["python".to_string()],
+            file_patterns: vec![],
+            import_gate: vec![],
+            detections: vec![Detection {
+                match_str: "Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let content =
+            "def connect():\n    '''\n    Example: Client(url) connects\n    '''\n    pass";
+        let file = FileContext {
+            path: PathBuf::from("/repo/client.py"),
+            relative_path: "client.py".to_string(),
+            content: std::sync::Arc::from(content),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(
+            findings.len(),
+            0,
+            "Client( inside single-quote docstring must be skipped"
+        );
+    }
+
+    #[test]
+    fn test_python_match_outside_docstring_still_fires() {
+        // Real call after the docstring must still be found
+        let pattern = Pattern {
+            id: "test-doc".to_string(),
+            name: "test".to_string(),
+            description: "test".to_string(),
+            languages: vec!["python".to_string()],
+            file_patterns: vec![],
+            import_gate: vec![],
+            detections: vec![Detection {
+                match_str: "Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let content = "def connect():\n    \"\"\"\n    Example: Client(url) docs\n    \"\"\"\n    c = Client(\"opc.tcp://host\")";
+        let file = FileContext {
+            path: PathBuf::from("/repo/client.py"),
+            relative_path: "client.py".to_string(),
+            content: std::sync::Arc::from(content),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(
+            findings.len(),
+            1,
+            "Client( outside docstring must still be found"
+        );
+    }
+
+    #[test]
+    fn test_triple_quote_inline_both_on_same_line_skipped() {
+        // """Example: Client(url)""" on one line — should be skipped entirely
+        let pattern = Pattern {
+            id: "test-doc".to_string(),
+            name: "test".to_string(),
+            description: "test".to_string(),
+            languages: vec!["python".to_string()],
+            file_patterns: vec![],
+            import_gate: vec![],
+            detections: vec![Detection {
+                match_str: "Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let file = FileContext {
+            path: PathBuf::from("/repo/client.py"),
+            relative_path: "client.py".to_string(),
+            content: std::sync::Arc::from("\"\"\"Example: Client(url) docs\"\"\""),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(findings.len(), 0, "Inline triple-quote string must be skipped");
     }
 }
