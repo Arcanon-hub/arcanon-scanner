@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Top-level structure of .arcanon.toml.
@@ -12,6 +13,9 @@ pub struct ArcanonConfig {
     #[serde(default, rename = "patterns")]
     #[allow(dead_code)] // wired in Phase 5 Plan 04
     pub user_patterns: Vec<PatternOverride>,
+    /// Per-service name/ignore overrides from [services] section.
+    #[serde(default)]
+    pub services: HashMap<String, ServiceConfig>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -72,6 +76,15 @@ pub struct DetectionOverride {
 pub struct PatternsConfig {
     /// Pattern IDs to disable — remote patterns with these IDs are excluded.
     pub disabled: Vec<String>,
+}
+
+/// Per-service override entry from [services."path"] in .arcanon.toml.
+/// Key is the service root path (relative to scan root).
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct ServiceConfig {
+    pub name: Option<String>,
+    pub ignore: Option<bool>,
 }
 
 /// Load `.arcanon.toml` from `scan_root` if it exists.
@@ -262,6 +275,71 @@ target_extraction = "named_arg:QueueUrl"
         let det2 = &pattern.detections[1];
         assert_eq!(det2.match_str, "send_message(");
         assert_eq!(det2.target_extraction, "named_arg:QueueUrl");
+    }
+
+    #[test]
+    fn test_services_name_override() {
+        let toml_str = r#"
+[services."packages/api"]
+name = "api-server"
+"#;
+        let cfg: ArcanonConfig = toml::from_str(toml_str).expect("failed to parse");
+        let svc = cfg.services.get("packages/api").expect("key missing");
+        assert_eq!(svc.name.as_deref(), Some("api-server"));
+        assert!(svc.ignore.is_none());
+    }
+
+    #[test]
+    fn test_services_ignore_flag() {
+        let toml_str = r#"
+[services."packages/shared"]
+ignore = true
+"#;
+        let cfg: ArcanonConfig = toml::from_str(toml_str).expect("failed to parse");
+        let svc = cfg.services.get("packages/shared").expect("key missing");
+        assert_eq!(svc.ignore, Some(true));
+        assert!(svc.name.is_none());
+    }
+
+    #[test]
+    fn test_services_missing_section_returns_empty() {
+        let toml_str = r#"
+[scanner]
+project_slug = "test"
+"#;
+        let cfg: ArcanonConfig = toml::from_str(toml_str).expect("failed to parse");
+        assert!(cfg.services.is_empty());
+    }
+
+    #[test]
+    fn test_services_malformed_config_returns_default() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("arcanon-services-malformed-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config_path = dir.join(".arcanon.toml");
+        let mut f = std::fs::File::create(&config_path).unwrap();
+        writeln!(f, "this is not valid toml = [[[").unwrap();
+
+        let cfg = load_file_config(&dir);
+        assert!(
+            cfg.services.is_empty(),
+            "malformed config must return default"
+        );
+
+        std::fs::remove_file(&config_path).ok();
+    }
+
+    #[test]
+    fn test_services_name_and_ignore_together() {
+        let toml_str = r#"
+[services."svc/frontend"]
+name = "frontend-app"
+ignore = false
+"#;
+        let cfg: ArcanonConfig = toml::from_str(toml_str).expect("failed to parse");
+        let svc = cfg.services.get("svc/frontend").expect("key missing");
+        assert_eq!(svc.name.as_deref(), Some("frontend-app"));
+        assert_eq!(svc.ignore, Some(false));
     }
 
     #[test]
