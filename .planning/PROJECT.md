@@ -30,13 +30,28 @@ Accurately detect services, endpoints, and connections across 7 languages and 8 
 - ✓ Fault-tolerant scanning (file/plugin failures don't abort) — v1.0
 - ✓ CI: lint, format, test, build for Linux/macOS/Windows — v1.0
 
+## Current Milestone: v1.1 Detection Accuracy
+
+**Goal:** Eliminate false positive explosion in pattern/library detection and fix detection gaps.
+
+**Target features:**
+- Fix `py-opcua` CDN pattern false positives (~130 per asyncua project)
+- Implement `file_patterns` filtering (parsed but never enforced)
+- Fix library resolution amplification (emits per-import-line instead of per-library)
+- Add Python docstring/comment filtering
+- Add `py-kubernetes` CDN pattern
+- NestJS two-phase extraction fix
+- `[services]` config parsing implementation
+
 ### Active
 
-- [ ] macOS/Windows/Linux distribution (Homebrew tap, PowerShell script, install.sh)
-- [ ] GitHub Release workflow with automated binary publishing on tags
-- [ ] get.arcanon.dev install script hosting
-- [ ] External plugin protocol via stdin/stdout JSON
-- [ ] Incremental scanning (only changed files since last commit)
+- [ ] Fix CDN pattern false positives (py-opcua `Client(` too broad)
+- [ ] Enforce file_patterns in pattern engine
+- [ ] Deduplicate library resolution findings
+- [ ] Filter Python docstrings and multi-line strings from pattern matching
+- [ ] Add py-kubernetes CDN pattern
+- [ ] Fix NestJS two-phase extraction in polyglot fixture
+- [ ] Implement [services] config parsing
 
 ### Out of Scope
 
@@ -48,6 +63,10 @@ Accurately detect services, endpoints, and connections across 7 languages and 8 
 - Daemon/watch mode — process lifecycle complexity
 - Cross-repo resolution — hub's job, scanner resolves intra-repo only
 - Numeric confidence scores — v2 payload extension
+- Variable indirection tracing — significant engine change, partial coverage
+- External plugin protocol — v2.0
+- Incremental scanning — v2.0
+- Homebrew tap — v2.0
 
 ## Context
 
@@ -80,4 +99,4 @@ Arcanon Hub accepts uploads at `POST /api/v1/scans/upload`.
 | Three-layer VariableStore | .env > compose > k8s priority | ✓ Good — covers all common config sources |
 
 ---
-*Last updated: 2026-04-05 after v1.0 milestone*
+*Last updated: 2026-04-06 after v1.1 milestone start*
