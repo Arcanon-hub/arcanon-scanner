@@ -608,6 +608,100 @@ export class UsersController {
         let endpoint = &result.endpoints[0];
         assert_eq!(endpoint.method, "GET");
         assert_eq!(endpoint.extraction_method, "ast_nestjs_two_phase");
+        assert_eq!(
+            endpoint.path, "/users/:id",
+            "NestJS full path must combine controller prefix + method path"
+        );
+    }
+
+    #[test]
+    fn test_nestjs_route_no_prefix() {
+        let plugin = TypeScriptPlugin;
+
+        let package_json = FileContext {
+            path: std::path::PathBuf::from("/repo/package.json"),
+            relative_path: "package.json".to_string(),
+            content: Arc::from(r#"{"dependencies": {"@nestjs/core": "^10.0"}}"#),
+        };
+
+        let controller_file = FileContext {
+            path: std::path::PathBuf::from("/repo/health.controller.ts"),
+            relative_path: "health.controller.ts".to_string(),
+            content: Arc::from(
+                r#"
+@Controller('')
+export class HealthController {
+    @Get('/health')
+    checkHealth() { }
+}
+"#,
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![package_json, controller_file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.endpoints.is_empty(),
+            "Should detect NestJS route with empty prefix"
+        );
+        let endpoint = &result.endpoints[0];
+        assert_eq!(endpoint.method, "GET");
+        assert_eq!(
+            endpoint.path, "/health",
+            "Empty controller prefix should not prepend slash"
+        );
+    }
+
+    #[test]
+    fn test_nestjs_route_post() {
+        let plugin = TypeScriptPlugin;
+
+        let package_json = FileContext {
+            path: std::path::PathBuf::from("/repo/package.json"),
+            relative_path: "package.json".to_string(),
+            content: Arc::from(r#"{"dependencies": {"@nestjs/core": "^10.0"}}"#),
+        };
+
+        let controller_file = FileContext {
+            path: std::path::PathBuf::from("/repo/users.controller.ts"),
+            relative_path: "users.controller.ts".to_string(),
+            content: Arc::from(
+                r#"
+@Controller('/users')
+export class UsersController {
+    @Post('/')
+    createUser() { }
+}
+"#,
+            ),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![package_json, controller_file],
+            vars: Arc::new(crate::vars::VariableStore::new()),
+            root: std::path::PathBuf::from("/repo"),
+            service_roots: HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert!(
+            !result.endpoints.is_empty(),
+            "Should detect NestJS POST route"
+        );
+        let endpoint = &result.endpoints[0];
+        assert_eq!(endpoint.method, "POST");
+        assert_eq!(
+            endpoint.path, "/users/",
+            "NestJS POST route must combine prefix + method path"
+        );
     }
 
     #[test]
