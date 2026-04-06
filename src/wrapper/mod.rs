@@ -597,6 +597,28 @@ fn extract_line_based_wrappers(
     }
 }
 
+/// Generic lifecycle/utility function names that must never be treated as wrappers (WRAP-09).
+/// These names are too common and ambiguous — treating them as wrappers produces false positives.
+const WRAPPER_BLOCKLIST: &[&str] = &[
+    "__init__",
+    "run",
+    "main",
+    "start",
+    "stop",
+    "setup",
+    "teardown",
+    "clear",
+    "close",
+    "shutdown",
+    "cleanup",
+    "reset",
+    "init",
+    "dispose",
+    "destroy",
+    "configure",
+    "register",
+];
+
 /// Check if a function calls something in the wrapper map and add it if so.
 fn check_function_and_add_to_wrapper_map(
     fn_name: &str,
@@ -614,6 +636,15 @@ fn check_function_and_add_to_wrapper_map(
         return;
     }
 
+    // Skip generic lifecycle/utility function names that are never real wrappers (WRAP-09)
+    if WRAPPER_BLOCKLIST.contains(&fn_name) {
+        debug!(
+            "Skipping {}: name is on wrapper blocklist (WRAP-09)",
+            fn_name
+        );
+        return;
+    }
+
     // For each entry in current_map, check if fn_body calls it
     for (callee_name, callee_info) in current_map.iter() {
         // Check if fn_body contains callee_name followed by (
@@ -621,10 +652,10 @@ fn check_function_and_add_to_wrapper_map(
             // Found a call to something in the wrapper map
             let new_depth = callee_info.depth + 1;
 
-            // Skip if depth > 5 (D-12)
-            if new_depth > 5 {
+            // Skip if depth > 2 (D-12, WRAP-08: real wrappers are 1-2 hops)
+            if new_depth > 2 {
                 debug!(
-                    "Skipping {}: wrapper chain depth {} exceeds max (5)",
+                    "Skipping {}: wrapper chain depth {} exceeds max (2)",
                     fn_name, new_depth
                 );
                 return;
@@ -663,7 +694,7 @@ fn check_function_and_add_to_wrapper_map(
 }
 
 /// Pass 1: Build the wrapper map from user code and library files.
-/// Seeds from pattern registry, then iterates to fixed point (D-03, max 5 iterations).
+/// Seeds from pattern registry, then iterates to fixed point (D-03, max 3 iterations (depth 2 converges faster)).
 ///
 /// # Arguments
 /// * `user_files` - All files from the user's codebase
@@ -682,8 +713,8 @@ pub fn build_wrapper_map(
     let initial_count = map.len();
     debug!("Wrapper map seeded with {} known functions", initial_count);
 
-    // Fixed-point iteration: repeat until map stops growing or max 5 iterations (D-03)
-    for iteration in 0..5 {
+    // Fixed-point iteration: repeat until map stops growing or max 3 iterations (D-03)
+    for iteration in 0..3 {
         let prev_len = map.len();
 
         // Scan user files
@@ -825,6 +856,11 @@ pub fn detect_wrapper_calls(
             for (wrapper_name, info) in wrapper_map.iter() {
                 // Skip seed entries (depth 0 — they are handled by pattern engine)
                 if info.depth == 0 {
+                    continue;
+                }
+
+                // Skip blocklisted names even if they somehow ended up in the map (WRAP-09)
+                if WRAPPER_BLOCKLIST.contains(&wrapper_name.as_str()) {
                     continue;
                 }
 
