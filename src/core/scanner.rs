@@ -247,47 +247,9 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
                 );
 
                 if !resolved_libs.is_empty() {
-                    // Convert ResolvedLibrary findings to ConnectionInfo per import location.
-                    // We emit one ConnectionInfo per (library, protocol, import site).
-                    // Import sites: scan lang_files for lines importing this library name.
-                    let mut libres_connections: Vec<crate::types::ConnectionInfo> = Vec::new();
-
-                    for resolved in &resolved_libs {
-                        for protocol in &resolved.protocols {
-                            // Find import lines in user source files
-                            for file in &lang_files {
-                                for (line_no, line) in file.content.lines().enumerate() {
-                                    let trimmed = line.trim();
-                                    // Check if this line imports the library (any form)
-                                    if line_contains_import(trimmed, &resolved.lib_name) {
-                                        libres_connections.push(crate::types::ConnectionInfo {
-                                            source_service: crate::plugin::scope_to_service(
-                                                &file.path,
-                                                &service_roots,
-                                            )
-                                            .unwrap_or("")
-                                            .to_string(),
-                                            target_name: String::new(),
-                                            protocol: protocol.clone(),
-                                            method: None,
-                                            path: None,
-                                            source_file: format!(
-                                                "{}:{}",
-                                                file.relative_path,
-                                                line_no + 1
-                                            ),
-                                            confidence: crate::types::Confidence::Medium, // LRES-06
-                                            extraction_method: format!(
-                                                "library_resolution:{}→{}",
-                                                resolved.lib_name, protocol
-                                            ),
-                                            evidence: Some(trimmed.to_string()),
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // Deduplicated: emit one ConnectionInfo per (library, protocol, service) — DACC-03
+                    let libres_connections =
+                        build_libres_connections(&resolved_libs, &lang_files, &service_roots);
 
                     if !libres_connections.is_empty() {
                         debug!(
@@ -559,6 +521,61 @@ fn line_contains_import(line: &str, lib_name: &str) -> bool {
     false
 }
 
+/// Build deduplicated library resolution connections.
+///
+/// Emits exactly one `ConnectionInfo` per (library, protocol, source_service) triple.
+/// Multiple import lines for the same library in the same service (or file) are collapsed
+/// to a single connection. This eliminates the per-import-line amplification in DACC-03.
+pub fn build_libres_connections(
+    resolved_libs: &[crate::libres::ResolvedLibrary],
+    lang_files: &[FileContext],
+    service_roots: &HashMap<PathBuf, String>,
+) -> Vec<crate::types::ConnectionInfo> {
+    use std::collections::HashSet;
+    let mut libres_connections: Vec<crate::types::ConnectionInfo> = Vec::new();
+    let mut seen: HashSet<(String, String, String)> = HashSet::new();
+
+    for resolved in resolved_libs {
+        for protocol in &resolved.protocols {
+            for file in lang_files {
+                // Find the first import line for this library in this file
+                let first_import = file
+                    .content
+                    .lines()
+                    .find(|line| line_contains_import(line.trim(), &resolved.lib_name));
+
+                if let Some(evidence_line) = first_import {
+                    let source_service = crate::plugin::scope_to_service(&file.path, service_roots)
+                        .unwrap_or("")
+                        .to_string();
+                    let key = (
+                        resolved.lib_name.clone(),
+                        protocol.clone(),
+                        source_service.clone(),
+                    );
+                    if seen.insert(key) {
+                        libres_connections.push(crate::types::ConnectionInfo {
+                            source_service,
+                            target_name: String::new(),
+                            protocol: protocol.clone(),
+                            method: None,
+                            path: None,
+                            source_file: file.relative_path.clone(),
+                            confidence: crate::types::Confidence::Medium,
+                            extraction_method: format!(
+                                "library_resolution:{}→{}",
+                                resolved.lib_name, protocol
+                            ),
+                            evidence: Some(evidence_line.trim().to_string()),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    libres_connections
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -617,5 +634,92 @@ mod tests {
 
         let matched = filter_files_by_patterns(&files, &[]);
         assert!(matched.is_empty());
+    }
+
+    // --- DACC-03 deduplication tests ---
+
+    fn make_resolved(lib_name: &str, protocols: &[&str]) -> crate::libres::ResolvedLibrary {
+        crate::libres::ResolvedLibrary {
+            lib_name: lib_name.to_string(),
+            protocols: protocols.iter().map(|s| s.to_string()).collect(),
+            source_file_hint: String::new(),
+        }
+    }
+
+    fn make_file(path: &str, content: &str) -> FileContext {
+        FileContext {
+            path: PathBuf::from(path),
+            relative_path: path.to_string(),
+            content: Arc::from(content),
+        }
+    }
+
+    /// Test 1: a service with 10 `import asyncua` lines produces 1 connection, not 10
+    #[test]
+    fn test_dacc03_ten_import_lines_produce_one_connection() {
+        let resolved = vec![make_resolved("asyncua", &["opcua"])];
+        // Build a file with 10 identical import lines
+        let content = "import asyncua\n".repeat(10);
+        let files = vec![make_file("svc/client.py", &content)];
+        let service_roots = HashMap::new();
+
+        let conns = build_libres_connections(&resolved, &files, &service_roots);
+        assert_eq!(
+            conns.len(),
+            1,
+            "10 import lines in one file should produce exactly 1 connection"
+        );
+        assert_eq!(conns[0].protocol, "opcua");
+    }
+
+    /// Test 2: two separate services importing the same library produce 2 connections (one per service)
+    #[test]
+    fn test_dacc03_two_services_produce_two_connections() {
+        let resolved = vec![make_resolved("asyncua", &["opcua"])];
+        let files = vec![
+            make_file("svc-a/client.py", "import asyncua\nimport asyncua\n"),
+            make_file("svc-b/worker.py", "import asyncua\n"),
+        ];
+        // Set up service_roots so each directory maps to a separate service
+        let mut service_roots = HashMap::new();
+        service_roots.insert(
+            PathBuf::from("svc-a"),
+            "service-a".to_string(),
+        );
+        service_roots.insert(
+            PathBuf::from("svc-b"),
+            "service-b".to_string(),
+        );
+
+        let conns = build_libres_connections(&resolved, &files, &service_roots);
+        assert_eq!(
+            conns.len(),
+            2,
+            "two services importing the same library should produce 2 connections"
+        );
+        let sources: Vec<&str> = conns.iter().map(|c| c.source_service.as_str()).collect();
+        assert!(sources.contains(&"service-a"), "should include service-a");
+        assert!(sources.contains(&"service-b"), "should include service-b");
+    }
+
+    /// Test 3: a library with two protocols produces 2 connections per service
+    #[test]
+    fn test_dacc03_two_protocols_produce_two_connections() {
+        let resolved = vec![make_resolved("redis", &["redis", "redis+tls"])];
+        let files = vec![make_file("app/main.py", "import redis\nimport redis\n")];
+        let service_roots = HashMap::new();
+
+        let conns = build_libres_connections(&resolved, &files, &service_roots);
+        assert_eq!(
+            conns.len(),
+            2,
+            "one library with two protocols should produce 2 connections per service"
+        );
+        let protocols: Vec<&str> = conns.iter().map(|c| c.protocol.as_str()).collect();
+        assert!(protocols.contains(&"redis"), "should have redis protocol");
+        assert!(
+            protocols.contains(&"redis+tls"),
+            "should have redis+tls protocol"
+        );
     }
 }
