@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Detection Accuracy
-status: planning
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-04-06T15:24:57.923Z"
-last_activity: 2026-04-06 — v1.1 roadmap created (Phases 8-10)
+status: executing
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-04-06T16:05:41.688Z"
+last_activity: 2026-04-06
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 4
-  percent: 0
+  completed_plans: 5
+  percent: 57
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 ## Current Position
 
 Phase: 8 of 10 (Pattern Engine Accuracy)
-Plan: 1 of 3 complete
-Status: In progress
-Last activity: 2026-04-06 — 08-01 complete (file_patterns + Python docstring fixes)
+Plan: 2 of 3 complete
+Status: Ready to execute
+Last activity: 2026-04-06
 
 Progress: [██████░░░░] 57%
 
@@ -47,6 +47,7 @@ Recent decisions affecting current work:
 - [Phase 08-pattern-engine-accuracy]: GlobSet compiled per-pattern-per-file (not cached) — acceptable for small pattern counts; TODO comment added for future caching
 - [Phase 08-pattern-engine-accuracy]: Triple-quote docstring skip is Python-only — other languages give triple-quotes different semantics
 - [Phase 09]: Extracted build_libres_connections() helper to enable unit testing; HashSet dedup on (lib_name, protocol, source_service) triple
+- [Phase 08]: Integration test uses make_opcua_pattern() helper — single source of truth for the narrowed pattern spec
 
 ### Pending Todos
 
@@ -58,6 +59,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06T15:24:57.920Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-04-06T16:05:41.685Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None

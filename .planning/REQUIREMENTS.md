@@ -22,7 +22,7 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 
 ### Testing
 
-- [ ] **TEST-01**: Each detection accuracy fix (DACC-01 through DACC-05) has regression tests proving the fix works and false positives are eliminated
+- [x] **TEST-01**: Each detection accuracy fix (DACC-01 through DACC-05) has regression tests proving the fix works and false positives are eliminated
 - [x] **TEST-02**: `[services]` config parsing has unit tests for name override, ignore, and missing/malformed config
 - [ ] **TEST-03**: End-to-end test scanning a fixture repo validates reduced false positive count after all fixes
 
@@ -59,7 +59,7 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 | DACC-05 | Phase 8 | Complete |
 | DEBT-01 | Phase 9 | Pending |
 | DEBT-02 | Phase 9 | Complete |
-| TEST-01 | Phase 8 | Pending |
+| TEST-01 | Phase 8 | Complete |
 | TEST-02 | Phase 9 | Complete |
 | TEST-03 | Phase 10 | Pending |
 
