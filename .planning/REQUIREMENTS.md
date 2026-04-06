@@ -24,9 +24,9 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 
 - [x] **WRAP-08**: Wrapper chain depth is limited to 2 hops — functions 3+ levels from a direct connection call are not marked as wrappers
 - [x] **WRAP-09**: Generic function names (`__init__`, `run`, `main`, `setup`, `teardown`, `clear`, `close`, `shutdown`, `cleanup`, `reset`) are excluded from wrapper candidacy
-- [ ] **WRAP-10**: Common Python method names (`exists`, `resolve`, `get`, `set`, `keys`, `values`, `items`, `load`, `save`, `push`, `pop`) are blocklisted from wrapper candidacy to prevent cross-concern name collisions
-- [ ] **WRAP-11**: Connections detected by both pattern engine and wrapper tracing are deduplicated — pattern-engine version preferred
-- [ ] **WRAP-12**: Wrapper tracing Pass 2 skips lines inside Python docstrings and comments
+- [x] **WRAP-10**: Common Python method names (`exists`, `resolve`, `get`, `set`, `keys`, `values`, `items`, `load`, `save`, `push`, `pop`) are blocklisted from wrapper candidacy to prevent cross-concern name collisions
+- [x] **WRAP-11**: Connections detected by both pattern engine and wrapper tracing are deduplicated — pattern-engine version preferred
+- [x] **WRAP-12**: Wrapper tracing Pass 2 skips lines inside Python docstrings and comments
 
 ### Testing
 
@@ -75,9 +75,9 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 | WRAP-08 | Phase 11 | Complete |
 | WRAP-09 | Phase 11 | Complete |
 | TEST-04 | Phase 11 | Complete |
-| WRAP-10 | Phase 12 | Pending |
-| WRAP-11 | Phase 12 | Pending |
-| WRAP-12 | Phase 12 | Pending |
+| WRAP-10 | Phase 12 | Complete |
+| WRAP-11 | Phase 12 | Complete |
+| WRAP-12 | Phase 12 | Complete |
 | TEST-05 | Phase 12 | Pending |
 
 **Coverage:**

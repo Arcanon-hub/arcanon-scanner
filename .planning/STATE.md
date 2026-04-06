@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Detection Accuracy
 status: verifying
-stopped_at: Completed 11-01-PLAN.md — wrapper depth cap 2 and WRAPPER_BLOCKLIST
-last_updated: "2026-04-06T17:49:41.234Z"
+stopped_at: Completed 12-02-PLAN.md — pattern+wrapper dedup (WRAP-11)
+last_updated: "2026-04-06T18:26:29.781Z"
 last_activity: 2026-04-06
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 11
+  completed_plans: 10
   percent: 57
 ---
 
@@ -52,6 +52,9 @@ Recent decisions affecting current work:
 - [Phase 10-integration-validation]: py-kubernetes injected via user_pattern_overrides in tests for CDN-independent self-contained validation
 - [Phase 10-integration-validation]: DACC-04 assertions check docstring-originated evidence text, not exact counts, to tolerate libres and wrapper connections
 - [Phase 11-wrapper-tracing-accuracy]: Depth cap reduced 5→2 and WRAPPER_BLOCKLIST added: eliminates false-positive amplification while preserving real 1-2 hop wrapper detection
+- [Phase 12-wrapper-tracing-refinement]: Extended WRAPPER_BLOCKLIST from 17 to 28 entries adding common Python method names (WRAP-10)
+- [Phase 12-wrapper-tracing-refinement]: Used count-based triple-quote toggle for Python docstring skip in detect_wrapper_calls (WRAP-12)
+- [Phase 12-02]: Dedup block placed after wrapper tracing block before combined_results assembly; two-pass HashSet approach with source_file line suffix stripping
 
 ### Pending Todos
 
@@ -63,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06T17:49:41.231Z
-Stopped at: Completed 11-01-PLAN.md — wrapper depth cap 2 and WRAPPER_BLOCKLIST
+Last session: 2026-04-06T18:26:29.778Z
+Stopped at: Completed 12-02-PLAN.md — pattern+wrapper dedup (WRAP-11)
 Resume file: None
