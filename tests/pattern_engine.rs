@@ -817,3 +817,100 @@ fn test_kubernetes_networking_v1_api_fires() {
     assert_eq!(result.connections.len(), 1, "NetworkingV1Api( must produce one finding");
     assert_eq!(result.connections[0].protocol, "kubernetes");
 }
+
+// =============================================================================
+// TEST-01: Combined regression — all Phase 8 fixes together
+// =============================================================================
+
+#[test]
+fn test_all_phase8_fixes_combined() {
+    // This test exercises all four fixes at once using a realistic Python file.
+    //
+    // Setup:
+    // - Pattern: py-opcua with narrowed import_gate (DACC-01) and file_patterns=["**/*.py"] (DACC-02)
+    // - File: has an asyncua import, a docstring with Client(, and a real = Client( call
+    //
+    // Expected: exactly ONE finding (the real call), NOT the docstring mention
+
+    let pattern = make_opcua_pattern(); // defined in DACC-01 section — uses narrowed gates
+
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    // Realistic Python file: module docstring contains Client( as an example,
+    // real call is on the last line
+    let content = "\
+from asyncua import Client
+
+def connect_to_plc(url: str):
+    \"\"\"
+    Connect to an OPC-UA PLC.
+
+    Example usage:
+        client = Client(\"opc.tcp://plc:4840\")
+        client.connect()
+    \"\"\"
+    client = Client(url)
+    return client
+";
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/plc/connector.py"),
+        relative_path: "plc/connector.py".to_string(),
+        content: Arc::from(content),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+
+    assert_eq!(
+        result.connections.len(),
+        1,
+        "Exactly one finding expected: the real Client( call, not the docstring example. \
+         Got {} findings: {:?}",
+        result.connections.len(),
+        result.connections.iter().map(|c| &c.source_file).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        result.connections[0].protocol, "opcua",
+        "Finding must have opcua protocol"
+    );
+}
+
+#[test]
+fn test_phase8_file_patterns_scopes_pattern_to_python_only() {
+    // A Go file containing "= Client(" must not fire the py-opcua pattern
+    // because file_patterns=["**/*.py"] excludes .go files
+    let pattern = make_opcua_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let go_file = FileContext {
+        path: PathBuf::from("/repo/main.go"),
+        relative_path: "main.go".to_string(),
+        // Contains the import gate text AND match string, but wrong file type
+        content: Arc::from("// from asyncua import Client\n// = Client(\"host\")"),
+    };
+
+    let result = registry.apply_all(&[go_file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 0,
+        "py-opcua pattern must not fire on .go files due to file_patterns restriction"
+    );
+}
+
+#[test]
+fn test_phase8_kubernetes_file_patterns_scopes_to_python() {
+    // A TypeScript file with kubernetes text must not fire py-kubernetes
+    let pattern = make_kubernetes_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let ts_file = FileContext {
+        path: PathBuf::from("/repo/src/k8s-client.ts"),
+        relative_path: "src/k8s-client.ts".to_string(),
+        content: Arc::from("// from kubernetes import client\n// v1 = CoreV1Api()"),
+    };
+
+    let result = registry.apply_all(&[ts_file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 0,
+        "py-kubernetes pattern must not fire on .ts files due to file_patterns restriction"
+    );
+}
