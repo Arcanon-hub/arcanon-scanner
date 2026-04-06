@@ -1794,6 +1794,111 @@ mod tests {
         assert_eq!(found[0].0, "api_get");
     }
 
+    /// WRAP-10: common Python method names must be blocked from becoming wrappers.
+    /// Tests `exists` and `resolve` — representative members of the extended blocklist.
+    #[test]
+    fn test_wrap10_blocklist_extensions_skipped() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.py"),
+            relative_path: "file.py".to_string(),
+            content: std::sync::Arc::from(""),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "OpcuaClient".to_string(),
+            WrapperInfo {
+                protocol: "opcua".to_string(),
+                chain: vec!["OpcuaClient".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        // `exists` calls OpcuaClient() in its body — but `exists` is blocklisted
+        let body_with_call = "def exists(self):\n    return OpcuaClient(self.url)\n";
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "exists",
+            body_with_call,
+            &file,
+            &map,
+            false,
+            "",
+            &mut found,
+        );
+        assert!(
+            found.is_empty(),
+            "`exists` must be blocked even when it calls a known wrapper"
+        );
+
+        // `resolve` is also blocklisted
+        let mut found2 = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "resolve",
+            body_with_call,
+            &file,
+            &map,
+            false,
+            "",
+            &mut found2,
+        );
+        assert!(
+            found2.is_empty(),
+            "`resolve` must be blocked even when it calls a known wrapper"
+        );
+    }
+
+    /// WRAP-12: detect_wrapper_calls must skip wrapper-name occurrences inside Python docstrings.
+    #[test]
+    fn test_wrap12_wrapper_call_inside_docstring_skipped() {
+        use std::collections::HashMap;
+        use std::path::PathBuf;
+
+        // Python file where the only `resolve_client(` call is inside a docstring
+        let py_content = r#"class SecretResolver:
+    """
+    Example usage:
+        resolve_client("opc.tcp://host")
+    """
+
+    def real_method(self):
+        pass
+"#;
+
+        let file = FileContext {
+            path: PathBuf::from("/test/service.py"),
+            relative_path: "service.py".to_string(),
+            content: std::sync::Arc::from(py_content),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "resolve_client".to_string(),
+            WrapperInfo {
+                protocol: "opcua".to_string(),
+                chain: vec!["resolve_client".to_string(), "OpcuaClient".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "adapter.py".to_string(),
+                    line: 5,
+                },
+                depth: 1,
+            },
+        );
+
+        let service_roots: HashMap<PathBuf, String> = HashMap::new();
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        assert!(
+            result.connections.is_empty(),
+            "wrapper call inside Python docstring must not produce a connection, got: {:?}",
+            result.connections
+        );
+    }
+
     #[test]
     fn test_detect_wrapper_calls_skips_blocklisted_names() {
         let file = FileContext {
