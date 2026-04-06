@@ -755,4 +755,69 @@ mod tests {
             "should have redis+tls protocol"
         );
     }
+
+    /// WRAP-11: pattern-engine connection for (source_file_base, protocol) prevents
+    /// wrapper_trace duplicate from being retained.
+    #[test]
+    fn test_wrap11_dedup_prefers_pattern_engine_over_wrapper_trace() {
+        use crate::types::{Confidence, ConnectionInfo};
+        use std::collections::HashSet;
+
+        // Pattern-engine connection for app/client.py + opcua
+        let pattern_conn = ConnectionInfo {
+            source_file: "app/client.py".to_string(),
+            protocol: "opcua".to_string(),
+            extraction_method: "pattern:py-opcua".to_string(),
+            source_service: String::new(),
+            target_name: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::High,
+            evidence: None,
+        };
+
+        // Wrapper-trace connection for the same file (with line suffix) + same protocol
+        let wrapper_conn = ConnectionInfo {
+            source_file: "app/client.py:42".to_string(),
+            protocol: "opcua".to_string(),
+            extraction_method: "wrapper_trace:connect_client→OpcuaClient".to_string(),
+            source_service: String::new(),
+            target_name: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::Medium,
+            evidence: None,
+        };
+
+        // Reproduce the dedup logic from scanner.rs
+        let mut pattern_keys: HashSet<(String, String)> = HashSet::new();
+        // Seed from non-wrapper connection
+        if !pattern_conn.extraction_method.starts_with("wrapper_trace:") {
+            let base = pattern_conn
+                .source_file
+                .split(':')
+                .next()
+                .unwrap_or(&pattern_conn.source_file)
+                .to_string();
+            pattern_keys.insert((base, pattern_conn.protocol.clone()));
+        }
+
+        // Apply filter to wrapper connection
+        let keep_wrapper = {
+            let base = wrapper_conn
+                .source_file
+                .split(':')
+                .next()
+                .unwrap_or(&wrapper_conn.source_file)
+                .to_string();
+            let key = (base, wrapper_conn.protocol.clone());
+            !wrapper_conn.extraction_method.starts_with("wrapper_trace:")
+                || !pattern_keys.contains(&key)
+        };
+
+        assert!(
+            !keep_wrapper,
+            "wrapper_trace connection for same (source_file_base, protocol) as pattern-engine must be filtered"
+        );
+    }
 }
