@@ -48,11 +48,16 @@
 **Requirements**: DACC-03, DEBT-01, DEBT-02, TEST-02
 **Success Criteria** (what must be TRUE):
   1. A Python file with ten `import asyncua` lines produces exactly one library resolution connection for asyncua, not ten
-  2. Scanning the polyglot fixture produces NestJS endpoints with full `/api/v1/...` paths, not bare handler method names
+  2. Scanning the polyglot fixture produces NestJS endpoints with full `/users/:id` paths, not bare handler method names
   3. A service with `[services.my-svc] name = "renamed"` in `.arcanon.toml` appears in the payload with the overridden name
   4. A service with `[services.my-svc] ignore = true` in `.arcanon.toml` is absent from the payload
   5. Unit tests for [services] name override, ignore flag, and malformed config all pass under `cargo test`
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Fix library resolution amplification (DACC-03)
+- [ ] 09-02-PLAN.md — Fix NestJS full path assertion in unit + integration tests (DEBT-01)
+- [ ] 09-03-PLAN.md — Add [services] config parsing and wire into main.rs (DEBT-02, TEST-02)
 
 ### Phase 10: Integration Validation
 **Goal**: A full scan of the polyglot fixture repo confirms that all v1.1 fixes collectively produce a false-positive-free result
@@ -76,5 +81,5 @@
 | 6. Library Resolution | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 7. Wrapper Tracing | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 8. Pattern Engine Accuracy | v1.1 | 0/TBD | Not started | - |
-| 9. Resolver and Tech Debt | v1.1 | 0/TBD | Not started | - |
+| 9. Resolver and Tech Debt | v1.1 | 0/3 | Not started | - |
 | 10. Integration Validation | v1.1 | 0/TBD | Not started | - |
