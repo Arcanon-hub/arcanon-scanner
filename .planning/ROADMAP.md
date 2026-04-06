@@ -106,3 +106,15 @@ Plans:
 
 Plans:
 - [x] 11-01-PLAN.md — Reduce depth cap to 2, add WRAPPER_BLOCKLIST, regression tests (WRAP-08, WRAP-09, TEST-04)
+
+### Phase 12: Wrapper Tracing Refinement
+**Goal**: Eliminate remaining wrapper tracing false positives from name collisions, pattern+wrapper duplicates, and docstring matching
+**Depends on**: Phase 11
+**Requirements**: WRAP-10, WRAP-11, WRAP-12, TEST-05
+**Success Criteria** (what must be TRUE):
+  1. Wrapper tracer does not match `path.exists()` or `self._path.exists()` when `exists` was registered from `SecretResolver.exists()` — bare function names with common Python builtins are blocklisted
+  2. A connection detected by both the pattern engine and wrapper tracing appears only once in the output (pattern-engine version preferred)
+  3. Wrapper tracing Pass 2 skips lines inside Python docstrings and comments, same as the pattern engine
+  4. Scanning opcua-adapter produces ~48 connections (down from 112) with wrapper tracing refinements
+  5. Regression tests verify all three fixes
+**Plans**: TBD

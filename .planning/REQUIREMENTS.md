@@ -24,6 +24,9 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 
 - [x] **WRAP-08**: Wrapper chain depth is limited to 2 hops — functions 3+ levels from a direct connection call are not marked as wrappers
 - [x] **WRAP-09**: Generic function names (`__init__`, `run`, `main`, `setup`, `teardown`, `clear`, `close`, `shutdown`, `cleanup`, `reset`) are excluded from wrapper candidacy
+- [ ] **WRAP-10**: Common Python method names (`exists`, `resolve`, `get`, `set`, `keys`, `values`, `items`, `load`, `save`, `push`, `pop`) are blocklisted from wrapper candidacy to prevent cross-concern name collisions
+- [ ] **WRAP-11**: Connections detected by both pattern engine and wrapper tracing are deduplicated — pattern-engine version preferred
+- [ ] **WRAP-12**: Wrapper tracing Pass 2 skips lines inside Python docstrings and comments
 
 ### Testing
 
@@ -31,6 +34,7 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 - [x] **TEST-02**: `[services]` config parsing has unit tests for name override, ignore, and missing/malformed config
 - [x] **TEST-03**: End-to-end test scanning a fixture repo validates reduced false positive count after all fixes
 - [x] **TEST-04**: Wrapper tracing depth limit and blocklist have regression tests proving false positive elimination
+- [ ] **TEST-05**: Wrapper name blocklist extension, pattern+wrapper dedup, and Pass 2 docstring skip have regression tests
 
 ## v2 Requirements
 
@@ -71,10 +75,14 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 | WRAP-08 | Phase 11 | Complete |
 | WRAP-09 | Phase 11 | Complete |
 | TEST-04 | Phase 11 | Complete |
+| WRAP-10 | Phase 12 | Pending |
+| WRAP-11 | Phase 12 | Pending |
+| WRAP-12 | Phase 12 | Pending |
+| TEST-05 | Phase 12 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 13 total
-- Mapped to phases: 13
+- v1.1 requirements: 17 total
+- Mapped to phases: 17
 - Unmapped: 0
 
 ---
