@@ -117,4 +117,9 @@ Plans:
   3. Wrapper tracing Pass 2 skips lines inside Python docstrings and comments, same as the pattern engine
   4. Scanning opcua-adapter produces ~48 connections (down from 112) with wrapper tracing refinements
   5. Regression tests verify all three fixes
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — Extend WRAPPER_BLOCKLIST and add triple-quote skip to detect_wrapper_calls (WRAP-10, WRAP-12)
+- [ ] 12-02-PLAN.md — Deduplicate pattern+wrapper connections in scanner.rs (WRAP-11)
+- [ ] 12-03-PLAN.md — Regression tests for all three fixes (TEST-05)
