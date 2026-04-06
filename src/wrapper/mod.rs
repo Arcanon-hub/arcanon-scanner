@@ -851,8 +851,34 @@ pub fn detect_wrapper_calls(
     let mut connections = Vec::new();
 
     for file in files {
+        // Detect file language for docstring handling (WRAP-12)
+        let is_python = file
+            .path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e == "py")
+            .unwrap_or(false);
+        let mut in_triple_quote = false;
+
         for (line_idx, line) in file.content.lines().enumerate() {
             let trimmed = line.trim();
+
+            // Python triple-quote docstring tracking (WRAP-12)
+            // Toggle in_triple_quote on each occurrence of """ in the line.
+            // Two occurrences on the same line (opens + closes) cancel out.
+            if is_python {
+                let count = trimmed.matches("\"\"\"").count();
+                if count % 2 == 1 {
+                    // Odd number of triple-quotes: toggle state
+                    in_triple_quote = !in_triple_quote;
+                }
+                // If we just entered a docstring on this line, skip it.
+                // If we just left (the closing """ is on this line), still skip.
+                // Either way, if count >= 1, this line itself contains the boundary — skip.
+                if in_triple_quote || count >= 1 {
+                    continue;
+                }
+            }
 
             // Skip comment lines
             if trimmed.starts_with("//")
