@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Detection Accuracy
 status: verifying
-stopped_at: Completed 12-02-PLAN.md — pattern+wrapper dedup (WRAP-11)
-last_updated: "2026-04-06T18:26:29.781Z"
+stopped_at: Completed 12-03-PLAN.md
+last_updated: "2026-04-06T18:31:13.125Z"
 last_activity: 2026-04-06
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 57
 ---
 
@@ -55,6 +55,7 @@ Recent decisions affecting current work:
 - [Phase 12-wrapper-tracing-refinement]: Extended WRAPPER_BLOCKLIST from 17 to 28 entries adding common Python method names (WRAP-10)
 - [Phase 12-wrapper-tracing-refinement]: Used count-based triple-quote toggle for Python docstring skip in detect_wrapper_calls (WRAP-12)
 - [Phase 12-02]: Dedup block placed after wrapper tracing block before combined_results assembly; two-pass HashSet approach with source_file line suffix stripping
+- [Phase 12-wrapper-tracing-refinement]: WRAP-11 test placed in scanner.rs because dedup logic is inline in scanner::run — pure data test avoids async invocation
 
 ### Pending Todos
 
@@ -66,6 +67,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06T18:26:29.778Z
-Stopped at: Completed 12-02-PLAN.md — pattern+wrapper dedup (WRAP-11)
+Last session: 2026-04-06T18:31:13.121Z
+Stopped at: Completed 12-03-PLAN.md
 Resume file: None

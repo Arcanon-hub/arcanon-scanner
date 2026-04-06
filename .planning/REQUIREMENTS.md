@@ -34,7 +34,7 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 - [x] **TEST-02**: `[services]` config parsing has unit tests for name override, ignore, and missing/malformed config
 - [x] **TEST-03**: End-to-end test scanning a fixture repo validates reduced false positive count after all fixes
 - [x] **TEST-04**: Wrapper tracing depth limit and blocklist have regression tests proving false positive elimination
-- [ ] **TEST-05**: Wrapper name blocklist extension, pattern+wrapper dedup, and Pass 2 docstring skip have regression tests
+- [x] **TEST-05**: Wrapper name blocklist extension, pattern+wrapper dedup, and Pass 2 docstring skip have regression tests
 
 ## v2 Requirements
 
@@ -78,7 +78,7 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 | WRAP-10 | Phase 12 | Complete |
 | WRAP-11 | Phase 12 | Complete |
 | WRAP-12 | Phase 12 | Complete |
-| TEST-05 | Phase 12 | Pending |
+| TEST-05 | Phase 12 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 17 total

@@ -122,4 +122,4 @@ Plans:
 Plans:
 - [x] 12-01-PLAN.md — Extend WRAPPER_BLOCKLIST and add triple-quote skip to detect_wrapper_calls (WRAP-10, WRAP-12)
 - [x] 12-02-PLAN.md — Deduplicate pattern+wrapper connections in scanner.rs (WRAP-11)
-- [ ] 12-03-PLAN.md — Regression tests for all three fixes (TEST-05)
+- [x] 12-03-PLAN.md — Regression tests for all three fixes (TEST-05)
