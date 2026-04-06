@@ -44,7 +44,7 @@
 
 Plans:
 - [ ] 08-01-PLAN.md — Enforce file_patterns glob filter and skip Python docstrings in apply() (DACC-02, DACC-04)
-- [ ] 08-02-PLAN.md — Regression tests for py-opcua narrowing and py-kubernetes pattern (DACC-01, DACC-05)
+- [x] 08-02-PLAN.md — Regression tests for py-opcua narrowing and py-kubernetes pattern (DACC-01, DACC-05)
 - [ ] 08-03-PLAN.md — Combined cross-fix integration tests and full suite verification (TEST-01)
 
 ### Phase 9: Resolver and Tech Debt
@@ -62,7 +62,7 @@ Plans:
 Plans:
 - [ ] 09-01-PLAN.md — Fix library resolution amplification (DACC-03)
 - [ ] 09-02-PLAN.md — Fix NestJS full path assertion in unit + integration tests (DEBT-01)
-- [ ] 09-03-PLAN.md — Add [services] config parsing and wire into main.rs (DEBT-02, TEST-02)
+- [x] 09-03-PLAN.md — Add [services] config parsing and wire into main.rs (DEBT-02, TEST-02)
 
 ### Phase 10: Integration Validation
 **Goal**: A full scan of the polyglot fixture repo confirms that all v1.1 fixes collectively produce a false-positive-free result
@@ -88,6 +88,6 @@ Plans:
 | 5. Pattern Engine | v1.0 | 5/5 | Complete | 2026-04-05 |
 | 6. Library Resolution | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 7. Wrapper Tracing | v1.0 | 3/3 | Complete | 2026-04-05 |
-| 8. Pattern Engine Accuracy | v1.1 | 0/3 | Not started | - |
-| 9. Resolver and Tech Debt | v1.1 | 0/3 | Not started | - |
+| 8. Pattern Engine Accuracy | v1.1 | 1/3 | In Progress|  |
+| 9. Resolver and Tech Debt | v1.1 | 1/3 | In Progress|  |
 | 10. Integration Validation | v1.1 | 0/1 | Not started | - |
