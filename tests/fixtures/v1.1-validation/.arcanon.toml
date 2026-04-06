@@ -1,0 +1,8 @@
+[scanner]
+project_slug = "v1.1-validation"
+
+[services.service-nestjs]
+name = "api-gateway"
+
+[services.service-ignored]
+ignore = true
