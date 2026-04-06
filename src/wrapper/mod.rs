@@ -1175,23 +1175,17 @@ mod tests {
         };
 
         let mut map = WrapperMap::new();
-        // Insert a wrapper at depth 5
+        // Insert a wrapper at depth 2
         map.insert(
             "deepWrapper".to_string(),
             WrapperInfo {
                 protocol: "rest".to_string(),
-                chain: vec![
-                    "a".to_string(),
-                    "b".to_string(),
-                    "c".to_string(),
-                    "d".to_string(),
-                    "fetch".to_string(),
-                ],
+                chain: vec!["a".to_string(), "fetch".to_string()],
                 source: WrapperSource::UserCode {
                     file: "seed".to_string(),
                     line: 0,
                 },
-                depth: 5,
+                depth: 2,
             },
         );
 
@@ -1208,7 +1202,7 @@ mod tests {
             &mut found,
         );
 
-        // Should not add because it would exceed depth cap of 5
+        // Should not add because it would exceed depth cap of 2
         assert!(found.is_empty());
     }
 
@@ -1561,5 +1555,235 @@ mod tests {
         assert_eq!(result.connections.len(), 1);
         let conn = &result.connections[0];
         assert_eq!(conn.source_service, "backend-service");
+    }
+
+    #[test]
+    fn test_depth_cap_allows_depth_two() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.ts"),
+            relative_path: "file.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        // Insert a wrapper at depth 1
+        map.insert(
+            "apiFetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["apiFetch".to_string(), "fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 1,
+            },
+        );
+
+        let fn_body = "function hop2(path) { return apiFetch(path); }";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map("hop2", fn_body, &file, &map, false, "", &mut found);
+
+        // hop2 → apiFetch → fetch: new_depth = 2, should be allowed
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, "hop2");
+        assert_eq!(found[0].1.depth, 2);
+    }
+
+    #[test]
+    fn test_depth_cap_blocks_depth_three() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.ts"),
+            relative_path: "file.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        // Insert a wrapper at depth 2
+        map.insert(
+            "hop2".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec![
+                    "hop2".to_string(),
+                    "apiFetch".to_string(),
+                    "fetch".to_string(),
+                ],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 2,
+            },
+        );
+
+        let fn_body = "function hop3(path) { return hop2(path); }";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map("hop3", fn_body, &file, &map, false, "", &mut found);
+
+        // hop3 → hop2: new_depth = 3, exceeds cap — must not be added
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_blocklist_blocks_init() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.py"),
+            relative_path: "file.py".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "connect".to_string(),
+            WrapperInfo {
+                protocol: "grpc".to_string(),
+                chain: vec!["connect".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        let fn_body = "def __init__(self):\n    self.conn = connect(host)";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "__init__", fn_body, &file, &map, false, "", &mut found,
+        );
+
+        // __init__ is on the blocklist — must not be added as a wrapper
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_blocklist_blocks_run() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/file.ts"),
+            relative_path: "file.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "fetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        let fn_body = "function run() { return fetch('/api/data'); }";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map("run", fn_body, &file, &map, false, "", &mut found);
+
+        // "run" is on the blocklist — must not be added as a wrapper
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_blocklist_blocks_main() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/main.ts"),
+            relative_path: "main.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "fetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        let fn_body = "function main() { return fetch('/api/data'); }";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map("main", fn_body, &file, &map, false, "", &mut found);
+
+        // "main" is on the blocklist — must not be added as a wrapper
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_blocklist_allows_real_wrapper() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/api.ts"),
+            relative_path: "api.ts".to_string(),
+            content: std::sync::Arc::from("test"),
+        };
+
+        let mut map = WrapperMap::new();
+        map.insert(
+            "fetch".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["fetch".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 0,
+            },
+        );
+
+        let fn_body = "function api_get(path) { return fetch(path); }";
+
+        let mut found = Vec::new();
+        check_function_and_add_to_wrapper_map(
+            "api_get", fn_body, &file, &map, false, "", &mut found,
+        );
+
+        // "api_get" is NOT on the blocklist — should be added normally
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, "api_get");
+    }
+
+    #[test]
+    fn test_detect_wrapper_calls_skips_blocklisted_names() {
+        let file = FileContext {
+            path: std::path::PathBuf::from("/test/service.py"),
+            relative_path: "service.py".to_string(),
+            content: std::sync::Arc::from("    __init__(arg)"),
+        };
+
+        // Simulate __init__ slipping into the map at depth 1
+        let mut map = WrapperMap::new();
+        map.insert(
+            "__init__".to_string(),
+            WrapperInfo {
+                protocol: "rest".to_string(),
+                chain: vec!["__init__".to_string(), "connect".to_string()],
+                source: WrapperSource::UserCode {
+                    file: "seed".to_string(),
+                    line: 0,
+                },
+                depth: 1,
+            },
+        );
+
+        let service_roots: HashMap<std::path::PathBuf, String> = HashMap::new();
+
+        let result = detect_wrapper_calls(&[file], &map, &service_roots);
+
+        // __init__ is on the blocklist — Pass 2 must emit no connections
+        assert!(result.connections.is_empty());
     }
 }
