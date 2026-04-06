@@ -171,7 +171,19 @@ fn main() {
         project_slug,
         plugin_filter: cli.plugins.clone(),
         exclude_patterns: exclude,
-        service_overrides: std::collections::HashMap::new(), // TODO: load from .arcanon.toml [services]
+        service_overrides: file_cfg
+            .services
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    core::merger::ServiceOverride {
+                        name: v.name,
+                        ignore: v.ignore,
+                    },
+                )
+            })
+            .collect(),
         git_overrides: core::scanner::GitOverrides {
             repo_url: cli.repo_url.clone(),
             branch: cli.branch.clone(),
