@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Detection Accuracy
-status: executing
-stopped_at: Completed 09-02-PLAN.md — NestJS path assertion and fixture discovery fix
-last_updated: "2026-04-06T16:13:32.654Z"
+status: verifying
+stopped_at: Completed 10-01-PLAN.md — v1.1 validation fixture and integration tests
+last_updated: "2026-04-06T16:49:17.011Z"
 last_activity: 2026-04-06
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 57
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 
 Phase: 8 of 10 (Pattern Engine Accuracy)
 Plan: 3 of 3 complete
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-06
 
 Progress: [██████░░░░] 57%
@@ -49,6 +49,8 @@ Recent decisions affecting current work:
 - [Phase 09]: Extracted build_libres_connections() helper to enable unit testing; HashSet dedup on (lib_name, protocol, source_service) triple
 - [Phase 08]: Integration test uses make_opcua_pattern() helper — single source of truth for the narrowed pattern spec
 - [Phase 09-resolver-and-tech-debt]: Added tests/fixtures/.gitignore with !*.json to fix package.json discovery — root .gitignore had *.json which excluded fixture JSON files from walk_repo
+- [Phase 10-integration-validation]: py-kubernetes injected via user_pattern_overrides in tests for CDN-independent self-contained validation
+- [Phase 10-integration-validation]: DACC-04 assertions check docstring-originated evidence text, not exact counts, to tolerate libres and wrapper connections
 
 ### Pending Todos
 
@@ -60,6 +62,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06T16:13:32.651Z
-Stopped at: Completed 09-02-PLAN.md — NestJS path assertion and fixture discovery fix
+Last session: 2026-04-06T16:49:17.008Z
+Stopped at: Completed 10-01-PLAN.md — v1.1 validation fixture and integration tests
 Resume file: None
