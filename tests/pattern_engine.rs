@@ -521,3 +521,299 @@ fn test_disabled_patterns_produce_no_findings() {
         "Disabled pattern should produce zero findings"
     );
 }
+
+// =============================================================================
+// DACC-01: py-opcua narrowed import_gate and match strings
+// =============================================================================
+
+fn make_opcua_pattern() -> Pattern {
+    Pattern {
+        id: "py-opcua".to_string(),
+        name: "py-opcua".to_string(),
+        description: "OPC-UA Python client via asyncua".to_string(),
+        languages: vec!["python".to_string()],
+        file_patterns: vec!["**/*.py".to_string()],
+        import_gate: vec![
+            "from asyncua import".to_string(),
+            "from asyncua.".to_string(),
+            "import asyncua".to_string(),
+        ],
+        detections: vec![
+            Detection {
+                match_str: "= Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::NamedArg("url".to_string()),
+            },
+            Detection {
+                match_str: "Client(url=".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::NamedArg("url".to_string()),
+            },
+        ],
+    }
+}
+
+#[test]
+fn test_opcua_narrowed_import_gate_blocks_substring_match() {
+    // OLD import_gate ["asyncua"] would match this file (asyncua appears in a comment).
+    // NEW import_gate ["from asyncua import", "from asyncua.", "import asyncua"] must NOT.
+    let pattern = make_opcua_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/client.py"),
+        relative_path: "client.py".to_string(),
+        // File references asyncua in a comment only — no actual import
+        content: Arc::from("# This module is NOT asyncua-based\nclient = RegistryClient(\"host\")"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 0,
+        "asyncua in comment must not trigger import gate"
+    );
+}
+
+#[test]
+fn test_opcua_narrowed_match_blocks_registry_client() {
+    // Even if import gate passes, "RegistryClient(" must NOT match "= Client(" or "Client(url="
+    let pattern = make_opcua_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/client.py"),
+        relative_path: "client.py".to_string(),
+        content: Arc::from("from asyncua import Node\nreg = RegistryClient(\"host\")"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 0,
+        "RegistryClient( must not match narrowed opcua pattern"
+    );
+}
+
+#[test]
+fn test_opcua_narrowed_match_blocks_governor_signal_client() {
+    let pattern = make_opcua_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/client.py"),
+        relative_path: "client.py".to_string(),
+        content: Arc::from("from asyncua import Node\ng = GovernorSignalClient(\"host\")"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 0,
+        "GovernorSignalClient( must not match narrowed opcua pattern"
+    );
+}
+
+#[test]
+fn test_opcua_assignment_form_fires() {
+    // "= Client(" must fire when import gate passes
+    let pattern = make_opcua_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/client.py"),
+        relative_path: "client.py".to_string(),
+        content: Arc::from("from asyncua import Client\nclient = Client(\"opc.tcp://plc:4840\")"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 1,
+        "= Client( with asyncua import must produce one finding"
+    );
+    assert_eq!(result.connections[0].protocol, "opcua");
+}
+
+#[test]
+fn test_opcua_url_kwarg_form_fires() {
+    // "Client(url=" must fire when import gate passes
+    let pattern = make_opcua_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/client.py"),
+        relative_path: "client.py".to_string(),
+        content: Arc::from("import asyncua\nclient = asyncua.Client(url=\"opc.tcp://plc:4840\")"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 1,
+        "Client(url= with asyncua import must produce one finding"
+    );
+    assert_eq!(result.connections[0].protocol, "opcua");
+}
+
+// =============================================================================
+// DACC-05: py-kubernetes pattern — CoreV1Api, AppsV1Api, BatchV1Api, etc.
+// =============================================================================
+
+fn make_kubernetes_pattern() -> Pattern {
+    Pattern {
+        id: "py-kubernetes".to_string(),
+        name: "py-kubernetes".to_string(),
+        description: "Python kubernetes client API constructors".to_string(),
+        languages: vec!["python".to_string()],
+        file_patterns: vec!["**/*.py".to_string()],
+        import_gate: vec![
+            "from kubernetes import".to_string(),
+            "from kubernetes.".to_string(),
+            "import kubernetes".to_string(),
+        ],
+        detections: vec![
+            Detection {
+                match_str: "CoreV1Api(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "kubernetes".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            },
+            Detection {
+                match_str: "AppsV1Api(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "kubernetes".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            },
+            Detection {
+                match_str: "BatchV1Api(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "kubernetes".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            },
+            Detection {
+                match_str: "NetworkingV1Api(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "kubernetes".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            },
+            Detection {
+                match_str: "CustomObjectsApi(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "kubernetes".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            },
+        ],
+    }
+}
+
+#[test]
+fn test_kubernetes_core_v1_api_fires() {
+    let pattern = make_kubernetes_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/kube.py"),
+        relative_path: "kube.py".to_string(),
+        content: Arc::from("from kubernetes import client\nv1 = client.CoreV1Api()"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(result.connections.len(), 1, "CoreV1Api( must produce one finding");
+    assert_eq!(result.connections[0].protocol, "kubernetes");
+}
+
+#[test]
+fn test_kubernetes_apps_v1_api_fires() {
+    let pattern = make_kubernetes_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/deploy.py"),
+        relative_path: "deploy.py".to_string(),
+        content: Arc::from("from kubernetes import client\napps = client.AppsV1Api()"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(result.connections.len(), 1, "AppsV1Api( must produce one finding");
+    assert_eq!(result.connections[0].protocol, "kubernetes");
+}
+
+#[test]
+fn test_kubernetes_multiple_apis_in_one_file() {
+    let pattern = make_kubernetes_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let content = "from kubernetes import client\n\
+                   v1 = client.CoreV1Api()\n\
+                   apps = client.AppsV1Api()\n\
+                   batch = client.BatchV1Api()";
+    let file = FileContext {
+        path: PathBuf::from("/repo/k8s_manager.py"),
+        relative_path: "k8s_manager.py".to_string(),
+        content: Arc::from(content),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 3,
+        "Three distinct kubernetes API calls must produce 3 findings"
+    );
+    for conn in &result.connections {
+        assert_eq!(conn.protocol, "kubernetes");
+    }
+}
+
+#[test]
+fn test_kubernetes_no_import_no_finding() {
+    let pattern = make_kubernetes_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/unrelated.py"),
+        relative_path: "unrelated.py".to_string(),
+        content: Arc::from("# No kubernetes import here\nv1 = CoreV1Api()"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(
+        result.connections.len(), 0,
+        "CoreV1Api( without kubernetes import must not fire"
+    );
+}
+
+#[test]
+fn test_kubernetes_custom_objects_api_fires() {
+    let pattern = make_kubernetes_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/crds.py"),
+        relative_path: "crds.py".to_string(),
+        content: Arc::from("import kubernetes\nco = kubernetes.client.CustomObjectsApi()"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(result.connections.len(), 1, "CustomObjectsApi( must produce one finding");
+    assert_eq!(result.connections[0].protocol, "kubernetes");
+}
+
+#[test]
+fn test_kubernetes_networking_v1_api_fires() {
+    let pattern = make_kubernetes_pattern();
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+
+    let file = FileContext {
+        path: PathBuf::from("/repo/net.py"),
+        relative_path: "net.py".to_string(),
+        content: Arc::from("from kubernetes.client import NetworkingV1Api\nnet = NetworkingV1Api()"),
+    };
+
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert_eq!(result.connections.len(), 1, "NetworkingV1Api( must produce one finding");
+    assert_eq!(result.connections[0].protocol, "kubernetes");
+}
