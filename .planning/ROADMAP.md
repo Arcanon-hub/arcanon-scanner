@@ -72,7 +72,10 @@ Plans:
   1. Running `cargo test` on the integration fixture suite passes with the expected connection counts for all services
   2. The fixture scan result contains zero false positive connections that were present before this milestone
   3. The scanner exits 0 and produces a valid ScanPayloadV1 on the polyglot fixture without any regression to v1.0 detections
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 10-01-PLAN.md — Create v1.1 validation fixture and comprehensive integration test (TEST-03)
 
 ## Progress
 
@@ -87,4 +90,4 @@ Plans:
 | 7. Wrapper Tracing | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 8. Pattern Engine Accuracy | v1.1 | 0/3 | Not started | - |
 | 9. Resolver and Tech Debt | v1.1 | 0/3 | Not started | - |
-| 10. Integration Validation | v1.1 | 0/TBD | Not started | - |
+| 10. Integration Validation | v1.1 | 0/1 | Not started | - |
