@@ -20,11 +20,17 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 - [x] **DEBT-01**: NestJS two-phase extraction produces correct full paths in the polyglot fixture integration test
 - [x] **DEBT-02**: Scanner parses `[services]` section from `.arcanon.toml` — supports `name` override and `ignore = true`
 
+### Wrapper Tracing
+
+- [ ] **WRAP-08**: Wrapper chain depth is limited to 2 hops — functions 3+ levels from a direct connection call are not marked as wrappers
+- [ ] **WRAP-09**: Generic function names (`__init__`, `run`, `main`, `setup`, `teardown`, `clear`, `close`, `shutdown`, `cleanup`, `reset`) are excluded from wrapper candidacy
+
 ### Testing
 
 - [x] **TEST-01**: Each detection accuracy fix (DACC-01 through DACC-05) has regression tests proving the fix works and false positives are eliminated
 - [x] **TEST-02**: `[services]` config parsing has unit tests for name override, ignore, and missing/malformed config
 - [x] **TEST-03**: End-to-end test scanning a fixture repo validates reduced false positive count after all fixes
+- [ ] **TEST-04**: Wrapper tracing depth limit and blocklist have regression tests proving false positive elimination
 
 ## v2 Requirements
 
@@ -62,10 +68,13 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 | TEST-01 | Phase 8 | Complete |
 | TEST-02 | Phase 9 | Complete |
 | TEST-03 | Phase 10 | Complete |
+| WRAP-08 | Phase 11 | Pending |
+| WRAP-09 | Phase 11 | Pending |
+| TEST-04 | Phase 11 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 10 total
-- Mapped to phases: 10
+- v1.1 requirements: 13 total
+- Mapped to phases: 13
 - Unmapped: 0
 
 ---

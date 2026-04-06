@@ -91,3 +91,15 @@ Plans:
 | 8. Pattern Engine Accuracy | v1.1 | 3/3 | Complete   | 2026-04-06 |
 | 9. Resolver and Tech Debt | v1.1 | 3/3 | Complete   | 2026-04-06 |
 | 10. Integration Validation | v1.1 | 1/1 | Complete   | 2026-04-06 |
+
+### Phase 11: Wrapper Tracing Accuracy
+**Goal**: Wrapper tracing produces no false positives from transitive call graph amplification — real wrapper chains (1-2 hops) are detected while deep chains and generic functions are excluded
+**Depends on**: Phase 10
+**Requirements**: WRAP-08, WRAP-09, TEST-04
+**Success Criteria** (what must be TRUE):
+  1. Scanning opcua-adapter produces ~37 connections (down from 268) with zero false positives from generic functions like `__init__`, `run`, `clear`
+  2. Wrapper chain depth is limited to 2 hops — functions 3+ hops from a connection call are not marked as wrappers
+  3. Generic function names (`__init__`, `run`, `main`, `setup`, `teardown`, `clear`, `close`) are excluded from wrapper candidacy
+  4. Wrapper-traced connections are deduplicated per (wrapper_name, protocol, service)
+  5. Regression tests verify depth limiting and blocklist filtering
+**Plans**: TBD
