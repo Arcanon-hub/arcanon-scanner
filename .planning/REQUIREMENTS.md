@@ -52,22 +52,22 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DACC-01 | — | Pending |
-| DACC-02 | — | Pending |
-| DACC-03 | — | Pending |
-| DACC-04 | — | Pending |
-| DACC-05 | ��� | Pending |
-| DEBT-01 | — | Pending |
-| DEBT-02 | — | Pending |
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
+| DACC-01 | Phase 8 | Pending |
+| DACC-02 | Phase 8 | Pending |
+| DACC-03 | Phase 9 | Pending |
+| DACC-04 | Phase 8 | Pending |
+| DACC-05 | Phase 8 | Pending |
+| DEBT-01 | Phase 9 | Pending |
+| DEBT-02 | Phase 9 | Pending |
+| TEST-01 | Phase 8 | Pending |
+| TEST-02 | Phase 9 | Pending |
+| TEST-03 | Phase 10 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-06*
-*Last updated: 2026-04-06 after v1.1 milestone start*
+*Last updated: 2026-04-06 after v1.1 roadmap creation*
