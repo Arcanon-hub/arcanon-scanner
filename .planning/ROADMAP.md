@@ -102,4 +102,7 @@ Plans:
   3. Generic function names (`__init__`, `run`, `main`, `setup`, `teardown`, `clear`, `close`) are excluded from wrapper candidacy
   4. Wrapper-traced connections are deduplicated per (wrapper_name, protocol, service)
   5. Regression tests verify depth limiting and blocklist filtering
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 11-01-PLAN.md — Reduce depth cap to 2, add WRAPPER_BLOCKLIST, regression tests (WRAP-08, WRAP-09, TEST-04)
