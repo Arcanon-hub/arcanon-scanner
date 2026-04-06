@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Detection Accuracy
 status: executing
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-04-06T16:05:41.688Z"
+stopped_at: Completed 09-02-PLAN.md — NestJS path assertion and fixture discovery fix
+last_updated: "2026-04-06T16:13:32.654Z"
 last_activity: 2026-04-06
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 57
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 ## Current Position
 
 Phase: 8 of 10 (Pattern Engine Accuracy)
-Plan: 2 of 3 complete
+Plan: 3 of 3 complete
 Status: Ready to execute
 Last activity: 2026-04-06
 
@@ -48,6 +48,7 @@ Recent decisions affecting current work:
 - [Phase 08-pattern-engine-accuracy]: Triple-quote docstring skip is Python-only — other languages give triple-quotes different semantics
 - [Phase 09]: Extracted build_libres_connections() helper to enable unit testing; HashSet dedup on (lib_name, protocol, source_service) triple
 - [Phase 08]: Integration test uses make_opcua_pattern() helper — single source of truth for the narrowed pattern spec
+- [Phase 09-resolver-and-tech-debt]: Added tests/fixtures/.gitignore with !*.json to fix package.json discovery — root .gitignore had *.json which excluded fixture JSON files from walk_repo
 
 ### Pending Todos
 
@@ -59,6 +60,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06T16:05:41.685Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-04-06T16:13:32.651Z
+Stopped at: Completed 09-02-PLAN.md — NestJS path assertion and fixture discovery fix
 Resume file: None

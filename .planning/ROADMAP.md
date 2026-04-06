@@ -25,7 +25,7 @@
 **Milestone Goal:** Eliminate false positive explosion in pattern and library detection, fix detection gaps, and close tech debt from v1.0.
 
 - [x] **Phase 8: Pattern Engine Accuracy** - Narrow py-opcua match, enforce file_patterns, filter Python docstrings, add py-kubernetes pattern (completed 2026-04-06)
-- [ ] **Phase 9: Resolver and Tech Debt** - Deduplicate library resolution findings, fix NestJS two-phase extraction, implement [services] config parsing
+- [x] **Phase 9: Resolver and Tech Debt** - Deduplicate library resolution findings, fix NestJS two-phase extraction, implement [services] config parsing (completed 2026-04-06)
 - [ ] **Phase 10: Integration Validation** - End-to-end fixture scan confirms false positive elimination across all fixes
 
 ## Phase Details
@@ -61,7 +61,7 @@ Plans:
 
 Plans:
 - [x] 09-01-PLAN.md — Fix library resolution amplification (DACC-03)
-- [ ] 09-02-PLAN.md — Fix NestJS full path assertion in unit + integration tests (DEBT-01)
+- [x] 09-02-PLAN.md — Fix NestJS full path assertion in unit + integration tests (DEBT-01)
 - [x] 09-03-PLAN.md — Add [services] config parsing and wire into main.rs (DEBT-02, TEST-02)
 
 ### Phase 10: Integration Validation
@@ -89,5 +89,5 @@ Plans:
 | 6. Library Resolution | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 7. Wrapper Tracing | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 8. Pattern Engine Accuracy | v1.1 | 3/3 | Complete   | 2026-04-06 |
-| 9. Resolver and Tech Debt | v1.1 | 2/3 | In Progress|  |
+| 9. Resolver and Tech Debt | v1.1 | 3/3 | Complete   | 2026-04-06 |
 | 10. Integration Validation | v1.1 | 0/1 | Not started | - |

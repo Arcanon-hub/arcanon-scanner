@@ -17,7 +17,7 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 
 ### Tech Debt
 
-- [ ] **DEBT-01**: NestJS two-phase extraction produces correct full paths in the polyglot fixture integration test
+- [x] **DEBT-01**: NestJS two-phase extraction produces correct full paths in the polyglot fixture integration test
 - [x] **DEBT-02**: Scanner parses `[services]` section from `.arcanon.toml` — supports `name` override and `ignore = true`
 
 ### Testing
@@ -57,7 +57,7 @@ Requirements for detection accuracy milestone. Each maps to roadmap phases.
 | DACC-03 | Phase 9 | Complete |
 | DACC-04 | Phase 8 | Complete |
 | DACC-05 | Phase 8 | Complete |
-| DEBT-01 | Phase 9 | Pending |
+| DEBT-01 | Phase 9 | Complete |
 | DEBT-02 | Phase 9 | Complete |
 | TEST-01 | Phase 8 | Complete |
 | TEST-02 | Phase 9 | Complete |
