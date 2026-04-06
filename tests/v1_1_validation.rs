@@ -50,6 +50,37 @@ fn py_kubernetes_pattern() -> PatternOverride {
     }
 }
 
+fn py_opcua_pattern() -> PatternOverride {
+    PatternOverride {
+        id: "py-opcua".to_string(),
+        name: "py-opcua".to_string(),
+        description: "OPC UA Python client via asyncua".to_string(),
+        languages: vec!["python".to_string()],
+        file_patterns: vec!["**/*.py".to_string()],
+        import_gate: vec![
+            "from asyncua import".to_string(),
+            "from asyncua.".to_string(),
+            "import asyncua".to_string(),
+        ],
+        detections: vec![
+            DetectionOverride {
+                match_str: "= Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: "high".to_string(),
+                target_extraction: "named_arg:url".to_string(),
+            },
+            DetectionOverride {
+                match_str: "asyncua.Client(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "opcua".to_string(),
+                confidence: "high".to_string(),
+                target_extraction: "first_string_arg".to_string(),
+            },
+        ],
+    }
+}
+
 fn make_config(root: PathBuf) -> arcanon::core::scanner::ScannerConfig {
     arcanon::core::scanner::ScannerConfig {
         root,
@@ -139,7 +170,7 @@ fn fastapi_docstring_and_kubernetes() {
         exclude_patterns: vec![],
         service_overrides: HashMap::new(),
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
-        user_pattern_overrides: vec![py_kubernetes_pattern()],
+        user_pattern_overrides: vec![py_kubernetes_pattern(), py_opcua_pattern()],
         disabled_patterns: vec![],
     };
 
@@ -310,7 +341,7 @@ fn full_fixture_scan_with_arcanon_toml() {
         service_overrides,
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
         // Inject py-kubernetes so the full scan also finds kubernetes connections
-        user_pattern_overrides: vec![py_kubernetes_pattern()],
+        user_pattern_overrides: vec![py_kubernetes_pattern(), py_opcua_pattern()],
         disabled_patterns: vec![],
     };
 
