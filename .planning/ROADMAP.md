@@ -105,4 +105,4 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 11-01-PLAN.md — Reduce depth cap to 2, add WRAPPER_BLOCKLIST, regression tests (WRAP-08, WRAP-09, TEST-04)
+- [x] 11-01-PLAN.md — Reduce depth cap to 2, add WRAPPER_BLOCKLIST, regression tests (WRAP-08, WRAP-09, TEST-04)

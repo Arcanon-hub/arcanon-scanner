@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Detection Accuracy
 status: verifying
-stopped_at: Completed 10-01-PLAN.md — v1.1 validation fixture and integration tests
-last_updated: "2026-04-06T16:49:17.011Z"
+stopped_at: Completed 11-01-PLAN.md — wrapper depth cap 2 and WRAPPER_BLOCKLIST
+last_updated: "2026-04-06T17:49:41.234Z"
 last_activity: 2026-04-06
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 8
+  completed_plans: 8
   percent: 57
 ---
 
@@ -51,6 +51,7 @@ Recent decisions affecting current work:
 - [Phase 09-resolver-and-tech-debt]: Added tests/fixtures/.gitignore with !*.json to fix package.json discovery — root .gitignore had *.json which excluded fixture JSON files from walk_repo
 - [Phase 10-integration-validation]: py-kubernetes injected via user_pattern_overrides in tests for CDN-independent self-contained validation
 - [Phase 10-integration-validation]: DACC-04 assertions check docstring-originated evidence text, not exact counts, to tolerate libres and wrapper connections
+- [Phase 11-wrapper-tracing-accuracy]: Depth cap reduced 5→2 and WRAPPER_BLOCKLIST added: eliminates false-positive amplification while preserving real 1-2 hop wrapper detection
 
 ### Pending Todos
 
@@ -62,6 +63,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06T16:49:17.008Z
-Stopped at: Completed 10-01-PLAN.md — v1.1 validation fixture and integration tests
+Last session: 2026-04-06T17:49:41.231Z
+Stopped at: Completed 11-01-PLAN.md — wrapper depth cap 2 and WRAPPER_BLOCKLIST
 Resume file: None
