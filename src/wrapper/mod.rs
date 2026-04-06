@@ -617,6 +617,18 @@ const WRAPPER_BLOCKLIST: &[&str] = &[
     "destroy",
     "configure",
     "register",
+    // Common Python method names that appear on many classes (WRAP-10)
+    "exists",
+    "resolve",
+    "get",
+    "set",
+    "keys",
+    "values",
+    "items",
+    "load",
+    "save",
+    "push",
+    "pop",
 ];
 
 /// Check if a function calls something in the wrapper map and add it if so.
