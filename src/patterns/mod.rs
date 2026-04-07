@@ -396,7 +396,7 @@ impl PatternRegistry {
                         source_file: format!("{}:{}", file.relative_path, line_number + 1),
                         confidence,
                         extraction_method: format!("pattern:{}", pattern.id),
-                        dependency: None,
+                        dependency: Some(pattern.id.clone()),
                         evidence: Some(line.trim().to_string()),
                     });
                 }
@@ -1320,6 +1320,39 @@ mod tests {
             findings.len(),
             0,
             "Inline triple-quote string must be skipped"
+        );
+    }
+
+    #[test]
+    fn test_pattern_engine_sets_dependency() {
+        use std::collections::HashMap;
+        let pattern = Pattern {
+            id: "redis-py".to_string(),
+            name: "redis-py".to_string(),
+            description: "Python Redis client".to_string(),
+            languages: vec!["python".to_string()],
+            file_patterns: vec![],
+            import_gate: vec!["import redis".to_string()],
+            detections: vec![Detection {
+                match_str: "Redis(".to_string(),
+                kind: "connection".to_string(),
+                protocol: "redis".to_string(),
+                confidence: PatternConfidence::High,
+                target_extraction: TargetExtraction::None,
+            }],
+        };
+        let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+        let file = FileContext {
+            path: PathBuf::from("/repo/client.py"),
+            relative_path: "client.py".to_string(),
+            content: std::sync::Arc::from("import redis\nRedis(host='localhost')"),
+        };
+        let findings = registry.apply(&file, "python", &HashMap::new());
+        assert_eq!(findings.len(), 1, "should detect one connection");
+        assert_eq!(
+            findings[0].dependency,
+            Some("redis-py".to_string()),
+            "dependency must be pattern.id"
         );
     }
 }

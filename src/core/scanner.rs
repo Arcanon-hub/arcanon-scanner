@@ -640,7 +640,7 @@ pub fn build_libres_connections(
                                 "library_resolution:{}→{}",
                                 resolved.lib_name, protocol
                             ),
-                            dependency: None,
+                            dependency: Some(resolved.lib_name.clone()),
                             evidence: Some(evidence_line.trim().to_string()),
                         });
                     }
@@ -1099,6 +1099,33 @@ mod tests {
             result.len(),
             2,
             "empty target_name and non-empty target_name produce different keys — both must survive"
+        );
+    }
+
+    #[test]
+    fn test_libres_dependency_populated() {
+        use crate::types::{Confidence, ConnectionInfo};
+        // Library resolution connections must carry the library name as dependency (DQ-02)
+        let conn = ConnectionInfo {
+            source_service: "my-service".to_string(),
+            target_name: String::new(),
+            protocol: "redis".to_string(),
+            method: None,
+            path: None,
+            source_file: "src/client.py".to_string(),
+            confidence: Confidence::Medium,
+            extraction_method: "library_resolution:redis-py→redis".to_string(),
+            dependency: Some("redis-py".to_string()),
+            evidence: None,
+        };
+        assert_eq!(
+            conn.dependency,
+            Some("redis-py".to_string()),
+            "library_resolution dependency must be the lib_name"
+        );
+        assert!(
+            conn.extraction_method.starts_with("library_resolution:"),
+            "extraction_method must be in library_resolution format"
         );
     }
 }
