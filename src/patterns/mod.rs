@@ -381,24 +381,24 @@ impl PatternRegistry {
                     }
 
                     // Extract target
-                    let (target_name, confidence) = if matches!(
-                        detection.target_extraction,
-                        TargetExtraction::EnvDefault
-                    ) {
-                        let all_lines: Vec<&str> = file.content.lines().collect();
-                        let target = extract_env_default(&all_lines, line_number, language);
-                        let conf = if target.is_empty() {
-                            Confidence::Medium
+                    let (target_name, confidence) =
+                        if matches!(detection.target_extraction, TargetExtraction::EnvDefault) {
+                            let all_lines: Vec<&str> = file.content.lines().collect();
+                            let target = extract_env_default(&all_lines, line_number, language);
+                            let conf = if target.is_empty() {
+                                Confidence::Medium
+                            } else {
+                                map_confidence(&detection.confidence)
+                            };
+                            (target, conf)
                         } else {
-                            map_confidence(&detection.confidence)
+                            match extract_target(line, &detection.target_extraction) {
+                                Some(t) if !t.is_empty() => {
+                                    (t, map_confidence(&detection.confidence))
+                                }
+                                _ => ("".to_string(), Confidence::Medium), // D-09
+                            }
                         };
-                        (target, conf)
-                    } else {
-                        match extract_target(line, &detection.target_extraction) {
-                            Some(t) if !t.is_empty() => (t, map_confidence(&detection.confidence)),
-                            _ => ("".to_string(), Confidence::Medium), // D-09
-                        }
-                    };
 
                     findings.push(ConnectionInfo {
                         source_service: crate::plugin::scope_to_service(&file.path, service_roots)
@@ -814,25 +814,6 @@ fn extract_after_or(line: &str) -> Option<String> {
         }
     }
     None
-}
-
-/// Extract first unquoted identifier-like argument from a function call.
-/// Handles patterns like: connect(DATABASE_URL), Redis(url), Client(REDIS)
-/// Returns the first ALL_CAPS or UPPER_LOWER identifier inside parens.
-fn extract_unquoted_arg(line: &str) -> Option<String> {
-    // Find the first '(' and extract the first word argument after it
-    let paren_pos = line.find('(')?;
-    let after = line[paren_pos + 1..].trim();
-    // Read identifier characters (alphanumeric + underscore)
-    let end = after
-        .find(|c: char| !c.is_alphanumeric() && c != '_')
-        .unwrap_or(after.len());
-    let ident = &after[..end];
-    if ident.is_empty() {
-        None
-    } else {
-        Some(ident.to_string())
-    }
 }
 
 #[cfg(test)]
@@ -1719,18 +1700,14 @@ mod tests {
     #[test]
     fn test_env_default_java_value_annotation() {
         // Inline — the @Value line itself is the matched line
-        let lines = vec![
-            r#"@Value("${spring.datasource.url:jdbc:postgresql://localhost/db}")"#,
-        ];
+        let lines = vec![r#"@Value("${spring.datasource.url:jdbc:postgresql://localhost/db}")"#];
         let result = extract_env_default(&lines, 0, "java");
         assert_eq!(result, "jdbc:postgresql://localhost/db");
     }
 
     #[test]
     fn test_env_default_go_tier1_only() {
-        let lines = vec![
-            r#"url := os.Getenv("DATABASE_URL")"#,
-        ];
+        let lines = vec![r#"url := os.Getenv("DATABASE_URL")"#];
         let result = extract_env_default(&lines, 0, "go");
         assert_eq!(result, "env:DATABASE_URL");
     }
@@ -1757,7 +1734,7 @@ mod tests {
             lines.push("# filler");
         }
         lines.push(r#"conn = connect(DATABASE_URL)"#); // index 22
-        // Backward scan from index 22: window is lines[2..22] — 20 lines, none contain the assignment
+                                                       // Backward scan from index 22: window is lines[2..22] — 20 lines, none contain the assignment
         let result = extract_env_default(&lines, 22, "python");
         assert_eq!(result, "env:DATABASE_URL", "Must not scan beyond 20 lines");
     }
@@ -1773,7 +1750,10 @@ mod tests {
         }
         lines.push(r#"conn = connect(DATABASE_URL)"#); // index 21
         let result = extract_env_default(&lines, 21, "python");
-        assert_eq!(result, "postgres://in-window", "Must scan exactly 20 lines back");
+        assert_eq!(
+            result, "postgres://in-window",
+            "Must scan exactly 20 lines back"
+        );
     }
 
     #[test]
@@ -1781,7 +1761,10 @@ mod tests {
         // Matched line has no quoted string — can't extract var name
         let lines = vec![r#"conn = connect(some_config_obj)"#];
         let result = extract_env_default(&lines, 0, "python");
-        assert_eq!(result, "", "Must return empty string when var name not parseable");
+        assert_eq!(
+            result, "",
+            "Must return empty string when var name not parseable"
+        );
     }
 
     #[test]
@@ -1805,6 +1788,9 @@ mod tests {
         }"#;
         let pattern_file: PatternFile = serde_json::from_str(json).expect("parse");
         let patterns = pattern_file.into_patterns();
-        assert!(matches!(patterns[0].detections[0].target_extraction, TargetExtraction::EnvDefault));
+        assert!(matches!(
+            patterns[0].detections[0].target_extraction,
+            TargetExtraction::EnvDefault
+        ));
     }
 }
