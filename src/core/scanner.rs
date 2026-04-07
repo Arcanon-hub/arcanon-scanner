@@ -609,6 +609,7 @@ pub fn build_libres_connections(
                                 "library_resolution:{}→{}",
                                 resolved.lib_name, protocol
                             ),
+                            dependency: None,
                             evidence: Some(evidence_line.trim().to_string()),
                         });
                     }
@@ -777,6 +778,7 @@ mod tests {
             method: None,
             path: None,
             confidence: Confidence::High,
+            dependency: None,
             evidence: None,
         };
 
@@ -790,6 +792,7 @@ mod tests {
             method: None,
             path: None,
             confidence: Confidence::Medium,
+            dependency: None,
             evidence: None,
         };
 

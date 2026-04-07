@@ -73,6 +73,8 @@ pub struct ConnectionPayload {
     pub path: Option<String>,
     pub source_file: String,
     pub confidence: String,
+    pub extraction_method: String, // passed through from ConnectionInfo
+    pub dependency: Option<String>, // passed through from ConnectionInfo
     pub evidence: Option<String>,
 }
 
@@ -179,6 +181,8 @@ pub fn assemble(
             path: conn.path,
             source_file: conn.source_file,
             confidence: confidence_str(&conn.confidence),
+            extraction_method: conn.extraction_method,
+            dependency: conn.dependency,
             evidence: conn.evidence,
         })
         .collect();
@@ -329,6 +333,7 @@ mod tests {
                 source_file: "src/services/payment.ts:42".to_string(),
                 confidence: Confidence::High,
                 extraction_method: "ast:typescript".to_string(),
+                dependency: None,
                 evidence: Some("axios.post(...)".to_string()),
             }],
             schemas: vec![],
@@ -573,5 +578,79 @@ mod tests {
             .expect("worker service not found");
         assert_eq!(worker.exposes.len(), 1);
         assert_eq!(worker.exposes[0].path, "/process");
+    }
+
+    #[test]
+    fn test_connection_payload_includes_extraction_method_and_dependency() {
+        let merged = MergedResult {
+            services: vec![],
+            endpoints: vec![],
+            connections: vec![ConnectionInfo {
+                source_service: "svc".to_string(),
+                target_name: "cache".to_string(),
+                protocol: "redis".to_string(),
+                method: None,
+                path: None,
+                source_file: "src/cache.py:10".to_string(),
+                confidence: Confidence::High,
+                extraction_method: "pattern:py-redis".to_string(),
+                dependency: Some("py-redis".to_string()),
+                evidence: None,
+            }],
+            schemas: vec![],
+        };
+        let payload = assemble(
+            merged,
+            None,
+            "repo".to_string(),
+            "main".to_string(),
+            "abc".to_string(),
+            "org/repo".to_string(),
+            "2026-04-07T00:00:00Z".to_string(),
+            "2026-04-07T00:00:01Z".to_string(),
+            1,
+            "".to_string(),
+            "none".to_string(),
+        );
+        let conn = &payload.findings.connections[0];
+        assert_eq!(conn.extraction_method, "pattern:py-redis");
+        assert_eq!(conn.dependency, Some("py-redis".to_string()));
+    }
+
+    #[test]
+    fn test_connection_payload_null_dependency_serializes_as_null() {
+        let merged = MergedResult {
+            services: vec![],
+            endpoints: vec![],
+            connections: vec![ConnectionInfo {
+                source_service: "svc".to_string(),
+                target_name: "api".to_string(),
+                protocol: "rest".to_string(),
+                method: None,
+                path: None,
+                source_file: "src/client.ts:5".to_string(),
+                confidence: Confidence::High,
+                extraction_method: "ast:typescript".to_string(),
+                dependency: None,
+                evidence: None,
+            }],
+            schemas: vec![],
+        };
+        let payload = assemble(
+            merged,
+            None,
+            "repo".to_string(),
+            "main".to_string(),
+            "abc".to_string(),
+            "org/repo".to_string(),
+            "2026-04-07T00:00:00Z".to_string(),
+            "2026-04-07T00:00:01Z".to_string(),
+            1,
+            "".to_string(),
+            "none".to_string(),
+        );
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"extraction_method\":\"ast:typescript\""));
+        assert!(json.contains("\"dependency\":null"));
     }
 }
