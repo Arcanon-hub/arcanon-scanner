@@ -108,6 +108,7 @@ impl LanguagePlugin for ComposePlugin {
                         source_file: format!("{}:0", file.relative_path),
                         confidence: Confidence::High,
                         extraction_method: "compose".to_string(),
+                        dependency: None,
                         evidence: Some(format!("{} depends_on {}", service_name, dep_name)),
                     });
                 }

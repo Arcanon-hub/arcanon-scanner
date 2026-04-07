@@ -396,6 +396,7 @@ impl PatternRegistry {
                         source_file: format!("{}:{}", file.relative_path, line_number + 1),
                         confidence,
                         extraction_method: format!("pattern:{}", pattern.id),
+                        dependency: None,
                         evidence: Some(line.trim().to_string()),
                     });
                 }

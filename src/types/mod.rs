@@ -63,6 +63,7 @@ pub struct ConnectionInfo {
     pub source_file: String, // "file:line" format
     pub confidence: Confidence,
     pub extraction_method: String,
+    pub dependency: Option<String>,
     pub evidence: Option<String>,
 }
 

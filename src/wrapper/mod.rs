@@ -931,6 +931,7 @@ pub fn detect_wrapper_calls(
                     source_file: format!("{}:{}", file.relative_path, line_idx + 1),
                     confidence: Confidence::Medium,
                     extraction_method: format!("wrapper_trace:{wrapper_name}→{terminal}"),
+                    dependency: None,
                     evidence: Some(trimmed.to_string()),
                 });
 
