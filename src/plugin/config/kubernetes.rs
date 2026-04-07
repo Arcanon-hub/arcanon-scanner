@@ -2,7 +2,9 @@ use serde::Deserialize;
 use tracing::warn;
 
 use crate::plugin::{ExtractionContext, LanguagePlugin};
-use crate::types::{Confidence, ExtractionResult, ServiceInfo};
+use crate::types::{Confidence, ConnectionInfo, ExtractionResult, ServiceInfo};
+
+use super::url_util::{is_connection_key, parse_url_value};
 
 /// Kubernetes manifest parser (supports multi-document YAML).
 pub struct KubernetesPlugin;
@@ -11,11 +13,40 @@ pub struct KubernetesPlugin;
 struct K8sManifest {
     kind: Option<String>,
     metadata: Option<K8sMetadata>,
+    spec: Option<K8sSpec>,
 }
 
 #[derive(Deserialize)]
 struct K8sMetadata {
     name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct K8sSpec {
+    template: Option<K8sTemplate>,
+}
+
+#[derive(Deserialize)]
+struct K8sTemplate {
+    spec: Option<K8sPodSpec>,
+}
+
+#[derive(Deserialize)]
+struct K8sPodSpec {
+    #[serde(default)]
+    containers: Vec<K8sContainer>,
+}
+
+#[derive(Deserialize)]
+struct K8sContainer {
+    #[serde(default)]
+    env: Vec<K8sEnvVar>,
+}
+
+#[derive(Deserialize)]
+struct K8sEnvVar {
+    name: String,
+    value: Option<String>, // None when valueFrom is used; serde ignores valueFrom by default
 }
 
 impl LanguagePlugin for KubernetesPlugin {
@@ -53,7 +84,83 @@ impl LanguagePlugin for KubernetesPlugin {
                         // Process based on kind
                         let kind = manifest.kind.as_deref().unwrap_or("");
                         match kind {
-                            "Deployment" | "Service" => {
+                            "Deployment" => {
+                                if let Some(metadata) = manifest.metadata {
+                                    if let Some(name) = metadata.name {
+                                        // Derive root_path: parent directory of the k8s file
+                                        let root_path = if let Some(parent) = file.path.parent() {
+                                            if let Ok(rel) = parent.strip_prefix(&ctx.root) {
+                                                rel.to_string_lossy().to_string()
+                                            } else {
+                                                String::new()
+                                            }
+                                        } else {
+                                            String::new()
+                                        };
+
+                                        result.services.push(ServiceInfo {
+                                            name: name.clone(),
+                                            root_path,
+                                            language: String::new(),
+                                            service_type: "service".to_string(),
+                                            boundary_entry: None,
+                                            confidence: Confidence::High,
+                                            extraction_method: "kubernetes".to_string(),
+                                        });
+
+                                        // Extract connections from containers[].env
+                                        if let Some(spec) = manifest.spec {
+                                            if let Some(template) = spec.template {
+                                                if let Some(pod_spec) = template.spec {
+                                                    for container in pod_spec.containers {
+                                                        for env_var in container.env {
+                                                            if let Some(val) = env_var.value {
+                                                                if is_connection_key(&env_var.name)
+                                                                {
+                                                                    if let Some((
+                                                                        protocol,
+                                                                        hostname,
+                                                                    )) = parse_url_value(&val)
+                                                                    {
+                                                                        result
+                                                                            .connections
+                                                                            .push(ConnectionInfo {
+                                                                            source_service: name
+                                                                                .clone(),
+                                                                            target_name: hostname,
+                                                                            protocol,
+                                                                            method: None,
+                                                                            path: None,
+                                                                            source_file: format!(
+                                                                                "{}:0",
+                                                                                file.relative_path
+                                                                            ),
+                                                                            confidence:
+                                                                                Confidence::High,
+                                                                            extraction_method:
+                                                                                "kubernetes"
+                                                                                    .to_string(),
+                                                                            dependency: None,
+                                                                            evidence: Some(
+                                                                                format!(
+                                                                                    "{}={}",
+                                                                                    env_var.name,
+                                                                                    val
+                                                                                ),
+                                                                            ),
+                                                                        });
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            "Service" => {
                                 if let Some(metadata) = manifest.metadata {
                                     if let Some(name) = metadata.name {
                                         // Derive root_path: parent directory of the k8s file
@@ -76,6 +183,7 @@ impl LanguagePlugin for KubernetesPlugin {
                                             confidence: Confidence::High,
                                             extraction_method: "kubernetes".to_string(),
                                         });
+                                        // no container env traversal for Service kind
                                     }
                                 }
                             }
@@ -156,6 +264,8 @@ spec:
         assert_eq!(result.services[0].root_path, "k8s");
         assert_eq!(result.services[0].confidence, Confidence::High);
         assert_eq!(result.services[0].extraction_method, "kubernetes");
+        // No env entries so no connections
+        assert_eq!(result.connections.len(), 0);
     }
 
     #[test]
@@ -250,5 +360,261 @@ spec:
         assert!(patterns.contains(&"**/k8s/**/*.yaml"));
         assert!(patterns.contains(&"**/kubernetes/**/*.yml"));
         assert!(patterns.contains(&"**/*.k8s.yaml"));
+    }
+
+    #[test]
+    fn test_k8s_deployment_env_url() {
+        let plugin = KubernetesPlugin;
+        let root = PathBuf::from("/repo");
+        let yaml_content = r#"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: my-org/api:latest
+          env:
+            - name: DATABASE_URL
+              value: "postgres://db.host/mydb"
+"#;
+
+        let file = FileContext {
+            path: PathBuf::from("/repo/k8s/deployment.yaml"),
+            relative_path: "k8s/deployment.yaml".to_string(),
+            content: Arc::from(yaml_content),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(VariableStore::new()),
+            root,
+            service_roots: std::collections::HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        assert_eq!(result.connections.len(), 1);
+        let conn = &result.connections[0];
+        assert_eq!(conn.source_service, "api-server");
+        assert_eq!(conn.protocol, "postgresql");
+        assert_eq!(conn.target_name, "db.host");
+        assert_eq!(conn.extraction_method, "kubernetes");
+        assert_eq!(conn.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn test_k8s_deployment_env_value_from_skipped() {
+        let plugin = KubernetesPlugin;
+        let root = PathBuf::from("/repo");
+        let yaml_content = r#"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: my-org/api:latest
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: url
+"#;
+
+        let file = FileContext {
+            path: PathBuf::from("/repo/k8s/deployment.yaml"),
+            relative_path: "k8s/deployment.yaml".to_string(),
+            content: Arc::from(yaml_content),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(VariableStore::new()),
+            root,
+            service_roots: std::collections::HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        // valueFrom has no literal value field — should produce 0 connections
+        assert_eq!(result.connections.len(), 0);
+    }
+
+    #[test]
+    fn test_k8s_deployment_env_non_url_skipped() {
+        let plugin = KubernetesPlugin;
+        let root = PathBuf::from("/repo");
+        let yaml_content = r#"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: my-org/api:latest
+          env:
+            - name: APP_NAME
+              value: "myapp"
+"#;
+
+        let file = FileContext {
+            path: PathBuf::from("/repo/k8s/deployment.yaml"),
+            relative_path: "k8s/deployment.yaml".to_string(),
+            content: Arc::from(yaml_content),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(VariableStore::new()),
+            root,
+            service_roots: std::collections::HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        // APP_NAME does not match connection key pattern
+        assert_eq!(result.connections.len(), 0);
+    }
+
+    #[test]
+    fn test_k8s_deployment_env_multiple_containers() {
+        let plugin = KubernetesPlugin;
+        let root = PathBuf::from("/repo");
+        let yaml_content = r#"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: my-org/api:latest
+          env:
+            - name: DATABASE_URL
+              value: "postgres://db.host/mydb"
+        - name: sidecar
+          image: my-org/sidecar:latest
+          env:
+            - name: DATABASE_URL
+              value: "postgres://db.host/mydb"
+"#;
+
+        let file = FileContext {
+            path: PathBuf::from("/repo/k8s/deployment.yaml"),
+            relative_path: "k8s/deployment.yaml".to_string(),
+            content: Arc::from(yaml_content),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(VariableStore::new()),
+            root,
+            service_roots: std::collections::HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        // 2 containers, each with DATABASE_URL → 2 connections, both with deployment name
+        assert_eq!(result.connections.len(), 2);
+        for conn in &result.connections {
+            assert_eq!(conn.source_service, "api-server");
+        }
+    }
+
+    #[test]
+    fn test_k8s_service_kind_no_env() {
+        let plugin = KubernetesPlugin;
+        let root = PathBuf::from("/repo");
+        let yaml_content = r#"
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  selector:
+    app: api-server
+  ports:
+    - port: 80
+      targetPort: 8080
+"#;
+
+        let file = FileContext {
+            path: PathBuf::from("/repo/k8s/service.yaml"),
+            relative_path: "k8s/service.yaml".to_string(),
+            content: Arc::from(yaml_content),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(VariableStore::new()),
+            root,
+            service_roots: std::collections::HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        // Service kind should emit ServiceInfo but NO connections
+        assert_eq!(result.services.len(), 1);
+        assert_eq!(result.services[0].name, "api-service");
+        assert_eq!(result.connections.len(), 0);
+    }
+
+    #[test]
+    fn test_k8s_multi_doc_with_env() {
+        let plugin = KubernetesPlugin;
+        let root = PathBuf::from("/repo");
+        let yaml_content = r#"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: DATABASE_URL
+              value: "postgres://db.host/mydb"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  key: value
+"#;
+
+        let file = FileContext {
+            path: PathBuf::from("/repo/k8s/manifest.yaml"),
+            relative_path: "k8s/manifest.yaml".to_string(),
+            content: Arc::from(yaml_content),
+        };
+
+        let ctx = ExtractionContext {
+            files: vec![file],
+            vars: Arc::new(VariableStore::new()),
+            root,
+            service_roots: std::collections::HashMap::new(),
+        };
+
+        let result = plugin.extract(&ctx);
+
+        // 1 connection from Deployment, 0 from ConfigMap
+        assert_eq!(result.connections.len(), 1);
+        assert_eq!(result.connections[0].source_service, "api-server");
     }
 }
