@@ -71,7 +71,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 14-01-PLAN.md — Add TargetExtraction::EnvDefault variant, extract_env_default backward scanner, apply() integration, and unit tests
+- [x] 14-01-PLAN.md — Add TargetExtraction::EnvDefault variant, extract_env_default backward scanner, apply() integration, and unit tests
 - [ ] 14-02-PLAN.md — Integration tests for all 9 CDN env-var patterns via PatternRegistry::from_patterns
 
 ### Phase 15: Config Plugin Enhancements
@@ -116,6 +116,6 @@ Plans:
 | 11. Wrapper Tracing Accuracy | v1.1 | 1/1 | Complete | 2026-04-06 |
 | 12. Wrapper Tracing Refinement | v1.1 | 3/3 | Complete | 2026-04-07 |
 | 13. Payload Schema and Dedup | v1.2 | 3/3 | Complete    | 2026-04-07 |
-| 14. Env Var Target Extraction | v1.2 | 0/? | Not started | — |
+| 14. Env Var Target Extraction | v1.2 | 1/2 | In Progress|  |
 | 15. Config Plugin Enhancements | v1.2 | 0/? | Not started | — |
 | 16. Spring Boot Plugin | v1.2 | 0/? | Not started | — |
