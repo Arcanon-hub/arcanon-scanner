@@ -573,7 +573,8 @@ fn test_opcua_narrowed_import_gate_blocks_substring_match() {
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 0,
+        result.connections.len(),
+        0,
         "asyncua in comment must not trigger import gate"
     );
 }
@@ -592,7 +593,8 @@ fn test_opcua_narrowed_match_blocks_registry_client() {
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 0,
+        result.connections.len(),
+        0,
         "RegistryClient( must not match narrowed opcua pattern"
     );
 }
@@ -610,7 +612,8 @@ fn test_opcua_narrowed_match_blocks_governor_signal_client() {
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 0,
+        result.connections.len(),
+        0,
         "GovernorSignalClient( must not match narrowed opcua pattern"
     );
 }
@@ -629,7 +632,8 @@ fn test_opcua_assignment_form_fires() {
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 1,
+        result.connections.len(),
+        1,
         "= Client( with asyncua import must produce one finding"
     );
     assert_eq!(result.connections[0].protocol, "opcua");
@@ -649,7 +653,8 @@ fn test_opcua_url_kwarg_form_fires() {
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 1,
+        result.connections.len(),
+        1,
         "Client(url= with asyncua import must produce one finding"
     );
     assert_eq!(result.connections[0].protocol, "opcua");
@@ -723,7 +728,11 @@ fn test_kubernetes_core_v1_api_fires() {
     };
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
-    assert_eq!(result.connections.len(), 1, "CoreV1Api( must produce one finding");
+    assert_eq!(
+        result.connections.len(),
+        1,
+        "CoreV1Api( must produce one finding"
+    );
     assert_eq!(result.connections[0].protocol, "kubernetes");
 }
 
@@ -739,7 +748,11 @@ fn test_kubernetes_apps_v1_api_fires() {
     };
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
-    assert_eq!(result.connections.len(), 1, "AppsV1Api( must produce one finding");
+    assert_eq!(
+        result.connections.len(),
+        1,
+        "AppsV1Api( must produce one finding"
+    );
     assert_eq!(result.connections[0].protocol, "kubernetes");
 }
 
@@ -760,7 +773,8 @@ fn test_kubernetes_multiple_apis_in_one_file() {
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 3,
+        result.connections.len(),
+        3,
         "Three distinct kubernetes API calls must produce 3 findings"
     );
     for conn in &result.connections {
@@ -781,7 +795,8 @@ fn test_kubernetes_no_import_no_finding() {
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 0,
+        result.connections.len(),
+        0,
         "CoreV1Api( without kubernetes import must not fire"
     );
 }
@@ -798,7 +813,11 @@ fn test_kubernetes_custom_objects_api_fires() {
     };
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
-    assert_eq!(result.connections.len(), 1, "CustomObjectsApi( must produce one finding");
+    assert_eq!(
+        result.connections.len(),
+        1,
+        "CustomObjectsApi( must produce one finding"
+    );
     assert_eq!(result.connections[0].protocol, "kubernetes");
 }
 
@@ -810,11 +829,17 @@ fn test_kubernetes_networking_v1_api_fires() {
     let file = FileContext {
         path: PathBuf::from("/repo/net.py"),
         relative_path: "net.py".to_string(),
-        content: Arc::from("from kubernetes.client import NetworkingV1Api\nnet = NetworkingV1Api()"),
+        content: Arc::from(
+            "from kubernetes.client import NetworkingV1Api\nnet = NetworkingV1Api()",
+        ),
     };
 
     let result = registry.apply_all(&[file], "python", &HashMap::new());
-    assert_eq!(result.connections.len(), 1, "NetworkingV1Api( must produce one finding");
+    assert_eq!(
+        result.connections.len(),
+        1,
+        "NetworkingV1Api( must produce one finding"
+    );
     assert_eq!(result.connections[0].protocol, "kubernetes");
 }
 
@@ -867,7 +892,11 @@ def connect_to_plc(url: str):
         "Exactly one finding expected: the real Client( call, not the docstring example. \
          Got {} findings: {:?}",
         result.connections.len(),
-        result.connections.iter().map(|c| &c.source_file).collect::<Vec<_>>()
+        result
+            .connections
+            .iter()
+            .map(|c| &c.source_file)
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         result.connections[0].protocol, "opcua",
@@ -891,7 +920,8 @@ fn test_phase8_file_patterns_scopes_pattern_to_python_only() {
 
     let result = registry.apply_all(&[go_file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 0,
+        result.connections.len(),
+        0,
         "py-opcua pattern must not fire on .go files due to file_patterns restriction"
     );
 }
@@ -910,7 +940,8 @@ fn test_phase8_kubernetes_file_patterns_scopes_to_python() {
 
     let result = registry.apply_all(&[ts_file], "python", &HashMap::new());
     assert_eq!(
-        result.connections.len(), 0,
+        result.connections.len(),
+        0,
         "py-kubernetes pattern must not fire on .ts files due to file_patterns restriction"
     );
 }

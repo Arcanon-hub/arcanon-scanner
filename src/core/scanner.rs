@@ -320,7 +320,12 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
         for result in &pattern_results {
             for conn in &result.connections {
                 if !conn.extraction_method.starts_with("wrapper_trace:") {
-                    let base = conn.source_file.split(':').next().unwrap_or(&conn.source_file).to_string();
+                    let base = conn
+                        .source_file
+                        .split(':')
+                        .next()
+                        .unwrap_or(&conn.source_file)
+                        .to_string();
                     pattern_keys.insert((base, conn.protocol.clone()));
                 }
             }
@@ -331,7 +336,12 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
             for result in &mut pattern_results {
                 result.connections.retain(|conn| {
                     if conn.extraction_method.starts_with("wrapper_trace:") {
-                        let base = conn.source_file.split(':').next().unwrap_or(&conn.source_file).to_string();
+                        let base = conn
+                            .source_file
+                            .split(':')
+                            .next()
+                            .unwrap_or(&conn.source_file)
+                            .to_string();
                         let key = (base, conn.protocol.clone());
                         // Retain wrapper connection only if there is NO pattern-engine match
                         !pattern_keys.contains(&key)
@@ -715,14 +725,8 @@ mod tests {
         ];
         // Set up service_roots so each directory maps to a separate service
         let mut service_roots = HashMap::new();
-        service_roots.insert(
-            PathBuf::from("svc-a"),
-            "service-a".to_string(),
-        );
-        service_roots.insert(
-            PathBuf::from("svc-b"),
-            "service-b".to_string(),
-        );
+        service_roots.insert(PathBuf::from("svc-a"), "service-a".to_string());
+        service_roots.insert(PathBuf::from("svc-b"), "service-b".to_string());
 
         let conns = build_libres_connections(&resolved, &files, &service_roots);
         assert_eq!(

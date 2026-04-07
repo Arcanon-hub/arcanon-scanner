@@ -1151,7 +1151,11 @@ mod tests {
             content: std::sync::Arc::from("Client(\"host\")"),
         };
         let findings = registry.apply(&file, "python", &HashMap::new());
-        assert_eq!(findings.len(), 1, "empty file_patterns should match any file");
+        assert_eq!(
+            findings.len(),
+            1,
+            "empty file_patterns should match any file"
+        );
     }
 
     #[test]
@@ -1213,7 +1217,11 @@ mod tests {
             content: std::sync::Arc::from(content),
         };
         let findings = registry.apply(&file, "python", &HashMap::new());
-        assert_eq!(findings.len(), 0, "Client( inside docstring must be skipped");
+        assert_eq!(
+            findings.len(),
+            0,
+            "Client( inside docstring must be skipped"
+        );
     }
 
     #[test]
@@ -1307,6 +1315,10 @@ mod tests {
             content: std::sync::Arc::from("\"\"\"Example: Client(url) docs\"\"\""),
         };
         let findings = registry.apply(&file, "python", &HashMap::new());
-        assert_eq!(findings.len(), 0, "Inline triple-quote string must be skipped");
+        assert_eq!(
+            findings.len(),
+            0,
+            "Inline triple-quote string must be skipped"
+        );
     }
 }
