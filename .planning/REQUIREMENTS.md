@@ -13,7 +13,7 @@
 ### PAYLOAD — Schema additions
 
 - [ ] **DQ-01**: Scanner exposes `extraction_method` on every serialized `ConnectionPayload` (`pattern:{id}`, `wrapper_trace:{func}→{target}`, `library_resolution:{lib}→{proto}`, `ast_{framework}`, `spec:{type}`)
-- [ ] **DQ-02**: Scanner exposes `dependency` field on `ConnectionPayload` — populated from pattern ID (pattern engine), lib name (library resolution), and seed pattern dependency (wrapper tracing); `None` for AST plugins
+- [x] **DQ-02**: Scanner exposes `dependency` field on `ConnectionPayload` — populated from pattern ID (pattern engine), lib name (library resolution), and seed pattern dependency (wrapper tracing); `None` for AST plugins
 
 ### ENGINE — Core orchestration
 
