@@ -92,6 +92,7 @@ pub enum TargetExtraction {
     FirstStringArg,
     NamedArg(String),
     UrlHostname,
+    EnvDefault,
 }
 
 impl<'de> Deserialize<'de> for TargetExtraction {
@@ -104,6 +105,7 @@ impl<'de> Deserialize<'de> for TargetExtraction {
             "none" => TargetExtraction::None,
             "first_string_arg" => TargetExtraction::FirstStringArg,
             "url_hostname" => TargetExtraction::UrlHostname,
+            "env_default" => TargetExtraction::EnvDefault,
             other if other.starts_with("named_arg:") => {
                 let key = other.strip_prefix("named_arg:").unwrap_or("").to_string();
                 TargetExtraction::NamedArg(key)
@@ -379,11 +381,24 @@ impl PatternRegistry {
                     }
 
                     // Extract target
-                    let (target_name, confidence) =
+                    let (target_name, confidence) = if matches!(
+                        detection.target_extraction,
+                        TargetExtraction::EnvDefault
+                    ) {
+                        let all_lines: Vec<&str> = file.content.lines().collect();
+                        let target = extract_env_default(&all_lines, line_number, language);
+                        let conf = if target.is_empty() {
+                            Confidence::Medium
+                        } else {
+                            map_confidence(&detection.confidence)
+                        };
+                        (target, conf)
+                    } else {
                         match extract_target(line, &detection.target_extraction) {
                             Some(t) if !t.is_empty() => (t, map_confidence(&detection.confidence)),
                             _ => ("".to_string(), Confidence::Medium), // D-09
-                        };
+                        }
+                    };
 
                     findings.push(ConnectionInfo {
                         source_service: crate::plugin::scope_to_service(&file.path, service_roots)
@@ -513,6 +528,8 @@ fn extract_target(line: &str, strategy: &TargetExtraction) -> Option<String> {
                 })
             })
         }
+        // EnvDefault is handled in apply() before this function is called
+        TargetExtraction::EnvDefault => None,
     }
 }
 
@@ -547,6 +564,266 @@ fn extract_named_arg(line: &str, needle: &str) -> Option<String> {
         }
         None
     })
+}
+
+/// Extract env var default value by scanning backward up to 20 lines.
+/// Returns "env:{VAR}" when no default is found, "" when VAR is not parseable.
+///
+/// Strategy:
+/// 1. For Java @Value on the matched line: extract inline default from `${VAR:default}`
+/// 2. For tier-1 only languages (go, csharp, java): emit `env:{var}` from matched line quoted string
+/// 3. For other languages: scan backward window for env var assignment patterns,
+///    extract default from the *scan line* directly (not keyed on matched-line var name)
+/// 4. If no match in backward scan: emit `env:{var}` if matched line has a quoted string, else ""
+fn extract_env_default(lines: &[&str], line_idx: usize, language: &str) -> String {
+    let matched_line = lines[line_idx];
+
+    // Java @Value inline — extract default from matched line directly
+    if language == "java" && matched_line.contains("@Value(") {
+        // Pattern: @Value("${VAR:default}") — capture between ':' and '}' inside ${...}
+        if let Some(dollar_pos) = matched_line.find("${") {
+            let inner = &matched_line[dollar_pos + 2..];
+            if let Some(colon_pos) = inner.find(':') {
+                if let Some(brace_pos) = inner[colon_pos + 1..].find('}') {
+                    let default = &inner[colon_pos + 1..colon_pos + 1 + brace_pos];
+                    let default = default.trim_matches('"').trim_matches('\'').trim();
+                    if !default.is_empty() {
+                        return default.to_string();
+                    }
+                }
+            }
+        }
+        // @Value present but no default — emit env hint using first quoted string
+        return extract_first_string(matched_line)
+            .map(|v| format!("env:{}", v))
+            .unwrap_or_default();
+    }
+
+    // Tier-1 only languages: emit env hint without backward scan
+    if matches!(language, "go" | "csharp" | "java") {
+        return extract_first_string(matched_line)
+            .map(|v| format!("env:{}", v))
+            .unwrap_or_default();
+    }
+
+    // Backward scan: up to 20 lines before line_idx
+    // We look for language-specific env var assignment patterns and extract the default
+    // from the scan line itself (not keyed on the matched-line variable name).
+    let scan_start = line_idx.saturating_sub(20);
+    let window = &lines[scan_start..line_idx];
+
+    // Also track the first env var name seen in the scan window for the fallback hint
+    let mut scan_var_name: Option<String> = None;
+
+    for scan_line in window.iter().rev() {
+        let trimmed = scan_line.trim();
+
+        let (found_default, found_var) = match language {
+            "python" => {
+                // os.getenv("VAR", "default") or os.environ.get("VAR", "default")
+                if trimmed.contains("os.getenv(") || trimmed.contains("os.environ.get(") {
+                    let var = extract_first_string(trimmed);
+                    let default = extract_second_string_arg(trimmed);
+                    (default, var)
+                } else {
+                    (None, None)
+                }
+            }
+            "typescript" | "javascript" => {
+                // process.env.VAR ?? "default" or process.env.VAR || "default"
+                if trimmed.contains("process.env.") {
+                    // Extract var name: identifier after "process.env."
+                    let var = extract_process_env_var(trimmed);
+                    let default = extract_after_nullish(trimmed);
+                    (default, var)
+                } else {
+                    (None, None)
+                }
+            }
+            "rust" => {
+                // env::var("VAR").unwrap_or("default")
+                if trimmed.contains("env::var(") {
+                    let var = extract_first_string(trimmed);
+                    let default = if trimmed.contains(".unwrap_or(") {
+                        extract_unwrap_or_arg(trimmed)
+                    } else {
+                        None
+                    };
+                    (default, var)
+                } else {
+                    (None, None)
+                }
+            }
+            "ruby" => {
+                // ENV.fetch("VAR", "default") or ENV["VAR"] || "default"
+                if trimmed.contains("ENV.fetch(") {
+                    let var = extract_first_string(trimmed);
+                    let default = extract_second_string_arg(trimmed);
+                    (default, var)
+                } else if trimmed.contains("ENV[") {
+                    let var = extract_first_string(trimmed);
+                    let default = extract_after_or(trimmed);
+                    (default, var)
+                } else {
+                    (None, None)
+                }
+            }
+            _ => (None, None),
+        };
+
+        if scan_var_name.is_none() {
+            scan_var_name = found_var;
+        }
+
+        if let Some(default) = found_default {
+            return default;
+        }
+    }
+
+    // No default found in backward scan — emit env hint if var name is parseable
+    // Prefer (in order):
+    //   1. First quoted string from matched line (e.g. connect("DATABASE_URL"))
+    //   2. First quoted string from scan window (e.g. os.getenv("DATABASE_URL") with no default)
+    //   3. ALL_CAPS unquoted identifier from matched line (e.g. connect(DATABASE_URL))
+    // Return "" if none of the above yield a usable name
+    let hint_var = extract_first_string(matched_line)
+        .or(scan_var_name)
+        .or_else(|| extract_env_var_ident(matched_line));
+    match hint_var {
+        Some(v) => format!("env:{}", v),
+        None => String::new(),
+    }
+}
+
+/// Extract an ALL_CAPS identifier (env var pattern) from inside function call parens.
+/// Only returns if the identifier matches [A-Z][A-Z0-9_]* (conventional env var naming).
+/// Returns None for lowercase/mixed-case identifiers like `some_config_obj`.
+fn extract_env_var_ident(line: &str) -> Option<String> {
+    let paren_pos = line.find('(')?;
+    // Skip leading `&` or whitespace after paren
+    let after = line[paren_pos + 1..].trim_start_matches('&').trim();
+    let end = after
+        .find(|c: char| !c.is_alphanumeric() && c != '_')
+        .unwrap_or(after.len());
+    let ident = &after[..end];
+    // Must be ALL_CAPS (at least one char, starts with uppercase letter, no lowercase)
+    if ident.is_empty() {
+        return None;
+    }
+    let has_uppercase = ident.chars().any(|c| c.is_uppercase());
+    let all_upper_or_digit_or_underscore = ident
+        .chars()
+        .all(|c| c.is_uppercase() || c.is_ascii_digit() || c == '_');
+    if has_uppercase && all_upper_or_digit_or_underscore {
+        Some(ident.to_string())
+    } else {
+        None
+    }
+}
+
+/// Extract the identifier portion of `process.env.VARNAME` from a line
+fn extract_process_env_var(line: &str) -> Option<String> {
+    let prefix = "process.env.";
+    let pos = line.find(prefix)?;
+    let after = &line[pos + prefix.len()..];
+    let end = after
+        .find(|c: char| !c.is_alphanumeric() && c != '_')
+        .unwrap_or(after.len());
+    let ident = &after[..end];
+    if ident.is_empty() {
+        None
+    } else {
+        Some(ident.to_string())
+    }
+}
+
+/// Extract second quoted string from a function call: fn("first", "second")
+fn extract_second_string_arg(line: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    let mut count = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'"' || b == b'\'' {
+            let quote = b as char;
+            let rest = &line[i + 1..];
+            if let Some(end) = rest.find(quote) {
+                count += 1;
+                if count == 2 {
+                    return Some(rest[..end].to_string());
+                }
+                i += end + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Extract value after `??` or `||` operator, stripping quotes
+fn extract_after_nullish(line: &str) -> Option<String> {
+    let pos = line.find("??").or_else(|| line.find("||"))?;
+    let after = line[pos + 2..].trim();
+    // Strip surrounding quotes
+    for q in ['"', '\'', '`'] {
+        if after.starts_with(q) {
+            if let Some(end) = after[1..].find(q) {
+                return Some(after[1..1 + end].to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract argument from `.unwrap_or("default")`
+fn extract_unwrap_or_arg(line: &str) -> Option<String> {
+    let pos = line.find(".unwrap_or(")?;
+    let after = &line[pos + 11..]; // len(".unwrap_or(") == 11
+    let bytes = after.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'"' || b == b'\'' {
+            let quote = b as char;
+            let rest = &after[i + 1..];
+            if let Some(end) = rest.find(quote) {
+                return Some(rest[..end].to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract value after `||` operator (Ruby ENV["VAR"] || "default"), stripping quotes
+fn extract_after_or(line: &str) -> Option<String> {
+    let pos = line.find("||")?;
+    let after = line[pos + 2..].trim();
+    for q in ['"', '\''] {
+        if after.starts_with(q) {
+            if let Some(end) = after[1..].find(q) {
+                return Some(after[1..1 + end].to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract first unquoted identifier-like argument from a function call.
+/// Handles patterns like: connect(DATABASE_URL), Redis(url), Client(REDIS)
+/// Returns the first ALL_CAPS or UPPER_LOWER identifier inside parens.
+fn extract_unquoted_arg(line: &str) -> Option<String> {
+    // Find the first '(' and extract the first word argument after it
+    let paren_pos = line.find('(')?;
+    let after = line[paren_pos + 1..].trim();
+    // Read identifier characters (alphanumeric + underscore)
+    let end = after
+        .find(|c: char| !c.is_alphanumeric() && c != '_')
+        .unwrap_or(after.len());
+    let ident = &after[..end];
+    if ident.is_empty() {
+        None
+    } else {
+        Some(ident.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -1354,5 +1631,171 @@ mod tests {
             Some("redis-py".to_string()),
             "dependency must be pattern.id"
         );
+    }
+
+    // =========================================================
+    // DQ-04: EnvDefault extraction tests
+    // =========================================================
+
+    #[test]
+    fn test_env_default_python_os_getenv() {
+        let lines = vec![
+            r#"DATABASE_URL = os.getenv("DATABASE_URL", "postgres://localhost/db")"#,
+            r#"conn = connect(DATABASE_URL)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "python");
+        assert_eq!(result, "postgres://localhost/db");
+    }
+
+    #[test]
+    fn test_env_default_python_environ_get() {
+        let lines = vec![
+            r#"url = os.environ.get("REDIS_URL", "redis://localhost:6379")"#,
+            r#"client = Redis(url)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "python");
+        assert_eq!(result, "redis://localhost:6379");
+    }
+
+    #[test]
+    fn test_env_default_typescript_nullish() {
+        let lines = vec![
+            r#"const DB_URL = process.env.DB_URL ?? "postgres://localhost/mydb""#,
+            r#"new Client(DB_URL)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "typescript");
+        assert_eq!(result, "postgres://localhost/mydb");
+    }
+
+    #[test]
+    fn test_env_default_typescript_or_operator() {
+        let lines = vec![
+            r#"const REDIS = process.env.REDIS || "redis://localhost""#,
+            r#"createClient(REDIS)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "typescript");
+        assert_eq!(result, "redis://localhost");
+    }
+
+    #[test]
+    fn test_env_default_rust_unwrap_or() {
+        let lines = vec![
+            r#"let db_url = env::var("DATABASE_URL").unwrap_or("postgres://localhost/dev");"#,
+            r#"PgPool::connect(&db_url)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "rust");
+        assert_eq!(result, "postgres://localhost/dev");
+    }
+
+    #[test]
+    fn test_env_default_ruby_fetch() {
+        let lines = vec![
+            r#"DATABASE_URL = ENV.fetch("DATABASE_URL", "postgres://localhost/app")"#,
+            r#"ActiveRecord::Base.establish_connection(DATABASE_URL)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "ruby");
+        assert_eq!(result, "postgres://localhost/app");
+    }
+
+    #[test]
+    fn test_env_default_ruby_bracket_or() {
+        let lines = vec![
+            r#"REDIS_URL = ENV["REDIS_URL"] || "redis://localhost:6379""#,
+            r#"Redis.new(url: REDIS_URL)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "ruby");
+        assert_eq!(result, "redis://localhost:6379");
+    }
+
+    #[test]
+    fn test_env_default_java_value_annotation() {
+        // Inline — the @Value line itself is the matched line
+        let lines = vec![
+            r#"@Value("${spring.datasource.url:jdbc:postgresql://localhost/db}")"#,
+        ];
+        let result = extract_env_default(&lines, 0, "java");
+        assert_eq!(result, "jdbc:postgresql://localhost/db");
+    }
+
+    #[test]
+    fn test_env_default_go_tier1_only() {
+        let lines = vec![
+            r#"url := os.Getenv("DATABASE_URL")"#,
+        ];
+        let result = extract_env_default(&lines, 0, "go");
+        assert_eq!(result, "env:DATABASE_URL");
+    }
+
+    #[test]
+    fn test_env_default_no_default_found_emits_hint() {
+        // Python: assignment exists but no second arg default
+        let lines = vec![
+            r#"DATABASE_URL = os.getenv("DATABASE_URL")"#,
+            r#"conn = connect(DATABASE_URL)"#,
+        ];
+        let result = extract_env_default(&lines, 1, "python");
+        assert_eq!(result, "env:DATABASE_URL");
+    }
+
+    #[test]
+    fn test_env_default_backward_scan_boundary_exactly_20_lines() {
+        // Place assignment at offset 21 before the match line — should NOT be found
+        // Lines: [import_line, assignment_line, 20 filler lines, matched_line]
+        // line_idx = 22, assignment at index 1 — that is 21 lines back, outside window
+        let mut lines = vec!["import os"];
+        lines.push(r#"DATABASE_URL = os.getenv("DATABASE_URL", "postgres://out-of-window")"#); // index 1
+        for _ in 0..20 {
+            lines.push("# filler");
+        }
+        lines.push(r#"conn = connect(DATABASE_URL)"#); // index 22
+        // Backward scan from index 22: window is lines[2..22] — 20 lines, none contain the assignment
+        let result = extract_env_default(&lines, 22, "python");
+        assert_eq!(result, "env:DATABASE_URL", "Must not scan beyond 20 lines");
+    }
+
+    #[test]
+    fn test_env_default_backward_scan_exactly_within_20_lines() {
+        // Place assignment at exactly 20 lines back — SHOULD be found
+        // line_idx = 21: scan_start = 1, window = lines[1..21], assignment at index 1
+        let mut lines = vec!["import os"];
+        lines.push(r#"DATABASE_URL = os.getenv("DATABASE_URL", "postgres://in-window")"#); // index 1
+        for _ in 0..19 {
+            lines.push("# filler");
+        }
+        lines.push(r#"conn = connect(DATABASE_URL)"#); // index 21
+        let result = extract_env_default(&lines, 21, "python");
+        assert_eq!(result, "postgres://in-window", "Must scan exactly 20 lines back");
+    }
+
+    #[test]
+    fn test_env_default_unparseable_var_returns_empty() {
+        // Matched line has no quoted string — can't extract var name
+        let lines = vec![r#"conn = connect(some_config_obj)"#];
+        let result = extract_env_default(&lines, 0, "python");
+        assert_eq!(result, "", "Must return empty string when var name not parseable");
+    }
+
+    #[test]
+    fn test_env_default_deserializes_from_json() {
+        let json = r#"{
+            "version": "1.0",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "languages": [{"language": "python", "patterns": [{
+                "id": "py-env-getenv",
+                "name": "Python os.getenv",
+                "description": "env var default",
+                "import_gate": ["import os"],
+                "detections": [{
+                    "match": "os.getenv(",
+                    "kind": "connection",
+                    "protocol": "env",
+                    "confidence": "low",
+                    "target_extraction": "env_default"
+                }]
+            }]}]
+        }"#;
+        let pattern_file: PatternFile = serde_json::from_str(json).expect("parse");
+        let patterns = pattern_file.into_patterns();
+        assert!(matches!(patterns[0].detections[0].target_extraction, TargetExtraction::EnvDefault));
     }
 }
