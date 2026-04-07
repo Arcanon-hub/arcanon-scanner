@@ -468,6 +468,7 @@ impl PatternRegistry {
                             "none" => TargetExtraction::None,
                             "first_string_arg" => TargetExtraction::FirstStringArg,
                             "url_hostname" => TargetExtraction::UrlHostname,
+                            "env_default" => TargetExtraction::EnvDefault,
                             other if other.starts_with("named_arg:") => {
                                 let key =
                                     other.strip_prefix("named_arg:").unwrap_or("").to_string();
