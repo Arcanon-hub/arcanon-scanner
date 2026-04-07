@@ -68,7 +68,11 @@ Plans:
   3. CDN patterns cover all 9 new entries: py-env-getenv, py-env-environ, ts-env-process, go-env-getenv, rs-env-var, rb-env-fetch, rb-env-bracket, java-env-value, java-env-getenv, cs-env-config
   4. A fixture using `os.environ.get("DATABASE_URL", "postgres://localhost/db")` produces a connection with target `postgres://localhost/db`
   5. Unit tests cover: default value extraction per language (Python, TypeScript, Rust, Ruby); env hint fallback when no default; backward scan boundary (exactly 20 lines, not 21)
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Add TargetExtraction::EnvDefault variant, extract_env_default backward scanner, apply() integration, and unit tests
+- [ ] 14-02-PLAN.md — Integration tests for all 9 CDN env-var patterns via PatternRegistry::from_patterns
 
 ### Phase 15: Config Plugin Enhancements
 **Goal**: The .env, Compose, OpenAPI, and Kubernetes config plugins emit connection data from their respective sources
