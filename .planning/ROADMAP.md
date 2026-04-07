@@ -84,8 +84,12 @@ Plans:
   3. Scanning an OpenAPI 3.0 file with a `servers:` block emits server URLs as connection hints; scanning a Swagger 2.0 file with `host + basePath` does the same
   4. Scanning a Kubernetes Deployment with URL-like values in `containers[].env` emits connections sourced from the Deployment name
   5. Unit tests cover: .env key pattern matching (URL-like vs. non-URL skip); Compose env block URL extraction; OpenAPI 3.0 and Swagger 2.0 servers parsing; K8s env value extraction per key type
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: no
+
+Plans:
+- [ ] 15-01-PLAN.md — url_util.rs shared URL utility + .env plugin connection extraction + Compose environment: block extraction (DQ-05, DQ-06)
+- [ ] 15-02-PLAN.md — OpenAPI 3.0 servers[] + Swagger 2.0 host extraction + Kubernetes containers[].env traversal (DQ-07, DQ-08)
 
 ### Phase 16: Spring Boot Plugin
 **Goal**: Java/Kotlin Spring Boot projects have their datasource, cache, messaging, and broker connections detected via properties and YAML config
@@ -117,5 +121,5 @@ Plans:
 | 12. Wrapper Tracing Refinement | v1.1 | 3/3 | Complete | 2026-04-07 |
 | 13. Payload Schema and Dedup | v1.2 | 3/3 | Complete    | 2026-04-07 |
 | 14. Env Var Target Extraction | v1.2 | 2/2 | Complete    | 2026-04-07 |
-| 15. Config Plugin Enhancements | v1.2 | 0/? | Not started | — |
+| 15. Config Plugin Enhancements | v1.2 | 0/2 | Not started | — |
 | 16. Spring Boot Plugin | v1.2 | 0/? | Not started | — |
