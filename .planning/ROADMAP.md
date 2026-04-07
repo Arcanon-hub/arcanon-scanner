@@ -51,7 +51,12 @@
   3. Scanning a fixture with known duplicate connections (same source_file, protocol, target_name) produces one connection in the payload, not multiple
   4. When duplicates collide, the surviving connection uses the pattern-engine version over wrapper over library_resolution
   5. Unit tests cover: extraction_method population per source (pattern, wrapper, libres, AST, spec); dependency population per source; dedup priority ordering with all three collision scenarios
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — Add dependency field to ConnectionInfo; populate at all emission sites (patterns, wrapper, libres, compose)
+- [ ] 13-02-PLAN.md — Add extraction_method and dependency to ConnectionPayload; update assemble()
+- [ ] 13-03-PLAN.md — Final dedup pass in scanner.rs with priority scoring and unit tests
 
 ### Phase 14: Env Var Target Extraction
 **Goal**: The pattern engine resolves env var references to their default values so targets are concrete URLs instead of variable names
@@ -106,7 +111,7 @@
 | 10. Integration Validation | v1.1 | 1/1 | Complete | 2026-04-06 |
 | 11. Wrapper Tracing Accuracy | v1.1 | 1/1 | Complete | 2026-04-06 |
 | 12. Wrapper Tracing Refinement | v1.1 | 3/3 | Complete | 2026-04-07 |
-| 13. Payload Schema and Dedup | v1.2 | 0/? | Not started | — |
+| 13. Payload Schema and Dedup | v1.2 | 0/3 | Not started | — |
 | 14. Env Var Target Extraction | v1.2 | 0/? | Not started | — |
 | 15. Config Plugin Enhancements | v1.2 | 0/? | Not started | — |
 | 16. Spring Boot Plugin | v1.2 | 0/? | Not started | — |
