@@ -31,9 +31,32 @@ Accurately detect services, endpoints, and connections across 7 languages and 8 
 - ✓ NestJS two-phase extraction fix — v1.1
 - ✓ CDN: py-opcua narrowed, py-kubernetes added — v1.1
 
+## Current Milestone: v1.2 Data Quality
+
+**Goal:** Improve the quality of connection data sent to the hub — enabling extraction method filtering, dependency tracking, and higher target resolution across all languages and repo types.
+
+**Target features:**
+- Expose `extraction_method` on every `ConnectionPayload` (hub can filter 63 → 13 primary edges)
+- Add `dependency` field to connections (library/framework name for dependency inventory)
+- Final dedup pass before payload assembly (remove 10-15% duplicate rows)
+- Env var target extraction via new `TargetExtraction::EnvDefault` strategy (6 languages + CDN patterns)
+- Emit connections from `.env` file values (key-pattern matching in env.rs)
+- Emit connections from Docker Compose `environment:` blocks (compose.rs)
+- Parse OpenAPI `servers:` block and Swagger 2.0 `host+basePath` (openapi.rs)
+- Parse Kubernetes container `env:` values for URL-like entries (kubernetes.rs)
+- New Spring Boot properties plugin (`plugin/config/spring.rs`)
+
 ### Active
 
-(No active milestone — planning next)
+- [ ] DQ-01: `extraction_method` exposed in `ConnectionPayload` and serialized to hub
+- [ ] DQ-02: `dependency` field added to `ConnectionInfo` and `ConnectionPayload`, populated across all sources
+- [ ] DQ-03: Final dedup pass in assembler — `(source_file, protocol, target_name)` key, pattern > wrapper > library_resolution priority
+- [ ] DQ-04: `TargetExtraction::EnvDefault` strategy in pattern engine + CDN patterns for py/ts/go/java/cs/rb/rs
+- [ ] DQ-05: `.env` plugin emits connections for URL-like key matches (`*_URL`, `*_HOST`, `DATABASE_URL`, etc.)
+- [ ] DQ-06: Compose plugin emits connections from `environment:` blocks with URL-like values
+- [ ] DQ-07: OpenAPI plugin parses `servers:` block (v3.0) and `host+basePath` (Swagger 2.0)
+- [ ] DQ-08: Kubernetes plugin parses `containers[].env` values for URL-like entries
+- [ ] DQ-09: New `spring.rs` config plugin parses `application*.properties` and `application*.yml`
 
 ### Out of Scope
 
@@ -80,4 +103,4 @@ AI skills: `npx skills add arcanon-hub/arcanon-skills`
 This document evolves at phase transitions and milestone boundaries.
 
 ---
-*Last updated: 2026-04-07 after v1.1 milestone*
+*Last updated: 2026-04-07 — Milestone v1.2 Data Quality started*
