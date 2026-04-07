@@ -35,7 +35,7 @@
 **v1.2 Data Quality (Phases 13-16):**
 
 - [x] **Phase 13: Payload Schema and Dedup** — Add extraction_method and dependency fields; final dedup pass before assembly (completed 2026-04-07)
-- [ ] **Phase 14: Env Var Target Extraction** — EnvDefault strategy in pattern engine + CDN patterns for 9 entries across 7 languages
+- [x] **Phase 14: Env Var Target Extraction** — EnvDefault strategy in pattern engine + CDN patterns for 9 entries across 7 languages (completed 2026-04-07)
 - [ ] **Phase 15: Config Plugin Enhancements** — Extend .env, Compose, OpenAPI, and Kubernetes plugins to emit connection data
 - [ ] **Phase 16: Spring Boot Plugin** — New spring.rs plugin parsing application properties and YAML for Spring connection keys
 
@@ -72,7 +72,7 @@ Plans:
 
 Plans:
 - [x] 14-01-PLAN.md — Add TargetExtraction::EnvDefault variant, extract_env_default backward scanner, apply() integration, and unit tests
-- [ ] 14-02-PLAN.md — Integration tests for all 9 CDN env-var patterns via PatternRegistry::from_patterns
+- [x] 14-02-PLAN.md — Integration tests for all 9 CDN env-var patterns via PatternRegistry::from_patterns
 
 ### Phase 15: Config Plugin Enhancements
 **Goal**: The .env, Compose, OpenAPI, and Kubernetes config plugins emit connection data from their respective sources
@@ -116,6 +116,6 @@ Plans:
 | 11. Wrapper Tracing Accuracy | v1.1 | 1/1 | Complete | 2026-04-06 |
 | 12. Wrapper Tracing Refinement | v1.1 | 3/3 | Complete | 2026-04-07 |
 | 13. Payload Schema and Dedup | v1.2 | 3/3 | Complete    | 2026-04-07 |
-| 14. Env Var Target Extraction | v1.2 | 1/2 | In Progress|  |
+| 14. Env Var Target Extraction | v1.2 | 2/2 | Complete   | 2026-04-07 |
 | 15. Config Plugin Enhancements | v1.2 | 0/? | Not started | — |
 | 16. Spring Boot Plugin | v1.2 | 0/? | Not started | — |
