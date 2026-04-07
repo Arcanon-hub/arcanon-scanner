@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Detection Accuracy
+milestone: v1.0
+milestone_name: milestone
 status: verifying
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-04-07T05:35:44.633Z"
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-04-07T17:06:54.981Z"
 last_activity: 2026-04-07
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 13
+  completed_phases: 12
+  total_plans: 42
+  completed_plans: 43
   percent: 57
 ---
 
@@ -56,6 +56,7 @@ Recent decisions affecting current work:
 - [Phase 12-wrapper-tracing-refinement]: Used count-based triple-quote toggle for Python docstring skip in detect_wrapper_calls (WRAP-12)
 - [Phase 12-02]: Dedup block placed after wrapper tracing block before combined_results assembly; two-pass HashSet approach with source_file line suffix stripping
 - [Phase 12-wrapper-tracing-refinement]: WRAP-11 test placed in scanner.rs because dedup logic is inline in scanner::run — pure data test avoids async invocation
+- [Phase 13-payload-schema-and-dedup]: Added dependency: Option<String> to ConnectionInfo in payload worktree as Rule 3 deviation — required for assemble() to compile; Plan 01 adds identical field, merge is clean
 
 ### Pending Todos
 
@@ -67,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-06T18:31:13.121Z
-Stopped at: Completed 12-03-PLAN.md
+Last session: 2026-04-07T17:06:54.977Z
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None
