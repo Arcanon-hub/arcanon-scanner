@@ -17,7 +17,7 @@
 
 ### ENGINE — Core orchestration
 
-- [ ] **DQ-03**: Scanner performs a final dedup pass before payload assembly — key is `(source_file, protocol, target_name_or_empty)`, priority order pattern > wrapper > library_resolution; connections with distinct non-empty targets are kept even if protocol matches
+- [x] **DQ-03**: Scanner performs a final dedup pass before payload assembly — key is `(source_file, protocol, target_name_or_empty)`, priority order pattern > wrapper > library_resolution; connections with distinct non-empty targets are kept even if protocol matches
 - [ ] **DQ-04**: Pattern engine supports `TargetExtraction::EnvDefault` strategy — when a matched arg is a variable reference, searches backward up to 20 lines for env var assignment and extracts the default value; emits `env:{VAR}` hint when default not found; CDN patterns added for py-env-getenv, py-env-environ, ts-env-process, go-env-getenv (tier 1 hint only), rs-env-var, rb-env-fetch, rb-env-bracket, java-env-value, java-env-getenv (tier 1 hint only), cs-env-config
 
 ### CONFIG — Config plugin enhancements

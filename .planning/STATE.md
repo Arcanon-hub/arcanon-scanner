@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Data Quality
+milestone: v1.0
+milestone_name: milestone
 status: executing
-stopped_at: Completed 13-02-PLAN.md
-last_updated: "2026-04-07T17:07:04.042Z"
+stopped_at: Completed 13-03-PLAN.md
+last_updated: "2026-04-07T17:15:37.957Z"
 last_activity: 2026-04-07
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-04-07)
 ## Current Position
 
 Phase: 13 (Payload Schema and Dedup) — EXECUTING
-Plan: 2 of 3 complete
-Status: Wave 1 complete — executing Wave 2
+Plan: 3 of 3 complete
+Status: Ready to execute
 Last activity: 2026-04-07
 
 Progress: `░░░░░░░░░░` 0% (0/4 phases)
@@ -55,6 +55,8 @@ v1.2 roadmap decisions:
 - [Phase 13-payload-schema-and-dedup]: Wrapper tracing sets dependency: None — seed propagation deferred to follow-on plan
 - [Phase 13-payload-schema-and-dedup]: ConnectionInfo.dependency carries detection provenance: Some(id) for pattern/libres, None for wrapper/AST/config
 - [Phase 13-payload-schema-and-dedup]: 13-02 added dependency field to ConnectionInfo as Rule 3 deviation to unblock assemble() compilation — merge with 13-01 was clean (identical field, same type)
+- [Phase 13-payload-schema-and-dedup]: Dedup key is (source_file, protocol, target_name) — different target_names are always kept as distinct connections
+- [Phase 13-payload-schema-and-dedup]: extraction_method_score() priority: pattern=3 > wrapper_trace=2 > library_resolution=1 > others=0 for final dedup tie-breaking
 
 ### Pending Todos
 
@@ -66,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-07T17:07:04.042Z
-Stopped at: Completed 13-02-PLAN.md
+Last session: 2026-04-07T17:15:37.953Z
+Stopped at: Completed 13-03-PLAN.md
 Resume file: None
