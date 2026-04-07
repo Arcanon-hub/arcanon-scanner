@@ -368,6 +368,37 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     // Step 10: Apply service overrides
     merger::apply_service_overrides(&mut merged, &config.service_overrides);
 
+    // Step 8.5: Final dedup pass — (source_file, protocol, target_name) key
+    // Priority: pattern (3) > wrapper_trace (2) > library_resolution (1) > others (0)
+    // Connections with distinct keys (including different target_name) are always kept.
+    {
+        use std::collections::HashMap;
+
+        let mut dedup_map: HashMap<(String, String, String), crate::types::ConnectionInfo> =
+            HashMap::new();
+
+        for conn in std::mem::take(&mut merged.connections) {
+            let key = (
+                conn.source_file.clone(),
+                conn.protocol.clone(),
+                conn.target_name.clone(),
+            );
+
+            dedup_map
+                .entry(key)
+                .and_modify(|existing| {
+                    let new_score = extraction_method_score(&conn.extraction_method);
+                    let existing_score = extraction_method_score(&existing.extraction_method);
+                    if new_score > existing_score {
+                        *existing = conn.clone();
+                    }
+                })
+                .or_insert(conn);
+        }
+
+        merged.connections = dedup_map.into_values().collect();
+    }
+
     // Step 11: Resolve intra-repo connections
     let merged = resolver::resolve(merged);
     debug!("Resolved connections");
@@ -620,6 +651,21 @@ pub fn build_libres_connections(
     libres_connections
 }
 
+/// Score an extraction_method string for dedup priority.
+/// Higher score wins when two connections share the same (source_file, protocol, target_name) key.
+/// Pattern detection is highest confidence; library resolution is lowest.
+fn extraction_method_score(method: &str) -> u8 {
+    if method.starts_with("pattern:") {
+        3
+    } else if method.starts_with("wrapper_trace:") {
+        2
+    } else if method.starts_with("library_resolution:") {
+        1
+    } else {
+        0 // ast:*, spec:*, compose, etc.
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -825,6 +871,234 @@ mod tests {
         assert!(
             !keep_wrapper,
             "wrapper_trace connection for same (source_file_base, protocol) as pattern-engine must be filtered"
+        );
+    }
+
+    // --- DQ-03 final dedup pass tests ---
+
+    #[test]
+    fn test_extraction_method_score_values() {
+        assert_eq!(extraction_method_score("pattern:py-redis"), 3);
+        assert_eq!(extraction_method_score("wrapper_trace:connect\u{2192}Client"), 2);
+        assert_eq!(extraction_method_score("library_resolution:redis-py\u{2192}redis"), 1);
+        assert_eq!(extraction_method_score("ast:python"), 0);
+        assert_eq!(extraction_method_score("compose"), 0);
+    }
+
+    /// Helper to run the final dedup logic inline (mirrors scanner.rs dedup block).
+    fn run_final_dedup(
+        conns: Vec<crate::types::ConnectionInfo>,
+    ) -> Vec<crate::types::ConnectionInfo> {
+        use std::collections::HashMap;
+        let mut dedup_map: HashMap<(String, String, String), crate::types::ConnectionInfo> =
+            HashMap::new();
+        for conn in conns {
+            let key = (
+                conn.source_file.clone(),
+                conn.protocol.clone(),
+                conn.target_name.clone(),
+            );
+            dedup_map
+                .entry(key)
+                .and_modify(|existing| {
+                    let new_score = extraction_method_score(&conn.extraction_method);
+                    let existing_score = extraction_method_score(&existing.extraction_method);
+                    if new_score > existing_score {
+                        *existing = conn.clone();
+                    }
+                })
+                .or_insert(conn);
+        }
+        dedup_map.into_values().collect()
+    }
+
+    #[test]
+    fn test_final_dedup_pattern_beats_library_resolution() {
+        use crate::types::{Confidence, ConnectionInfo};
+
+        let pattern_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: String::new(),
+            extraction_method: "pattern:py-redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::High,
+            dependency: Some("py-redis".to_string()),
+            evidence: None,
+        };
+        let libres_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: String::new(),
+            extraction_method: "library_resolution:redis-py\u{2192}redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::Medium,
+            dependency: Some("redis-py".to_string()),
+            evidence: None,
+        };
+
+        let result = run_final_dedup(vec![pattern_conn, libres_conn]);
+        assert_eq!(result.len(), 1, "duplicate (same key) must collapse to one entry");
+        assert!(
+            result[0].extraction_method.starts_with("pattern:"),
+            "pattern: must win over library_resolution: (got {})",
+            result[0].extraction_method
+        );
+    }
+
+    #[test]
+    fn test_final_dedup_wrapper_beats_library_resolution() {
+        use crate::types::{Confidence, ConnectionInfo};
+
+        let wrapper_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: String::new(),
+            extraction_method: "wrapper_trace:connect\u{2192}Client".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::Medium,
+            dependency: None,
+            evidence: None,
+        };
+        let libres_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: String::new(),
+            extraction_method: "library_resolution:redis-py\u{2192}redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::Medium,
+            dependency: Some("redis-py".to_string()),
+            evidence: None,
+        };
+
+        let result = run_final_dedup(vec![wrapper_conn, libres_conn]);
+        assert_eq!(result.len(), 1, "duplicate (same key) must collapse to one entry");
+        assert!(
+            result[0].extraction_method.starts_with("wrapper_trace:"),
+            "wrapper_trace: must win over library_resolution: (got {})",
+            result[0].extraction_method
+        );
+    }
+
+    #[test]
+    fn test_final_dedup_pattern_beats_wrapper() {
+        use crate::types::{Confidence, ConnectionInfo};
+
+        let pattern_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: String::new(),
+            extraction_method: "pattern:py-redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::High,
+            dependency: Some("py-redis".to_string()),
+            evidence: None,
+        };
+        let wrapper_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: String::new(),
+            extraction_method: "wrapper_trace:connect\u{2192}Client".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::Medium,
+            dependency: None,
+            evidence: None,
+        };
+
+        let result = run_final_dedup(vec![pattern_conn, wrapper_conn]);
+        assert_eq!(result.len(), 1, "duplicate (same key) must collapse to one entry");
+        assert!(
+            result[0].extraction_method.starts_with("pattern:"),
+            "pattern: must win over wrapper_trace: (got {})",
+            result[0].extraction_method
+        );
+    }
+
+    #[test]
+    fn test_final_dedup_distinct_targets_both_kept() {
+        use crate::types::{Confidence, ConnectionInfo};
+
+        let conn_a = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: "redis.host:6379".to_string(),
+            extraction_method: "pattern:py-redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::High,
+            dependency: Some("py-redis".to_string()),
+            evidence: None,
+        };
+        let conn_b = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: "redis.backup:6379".to_string(),
+            extraction_method: "pattern:py-redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::High,
+            dependency: Some("py-redis".to_string()),
+            evidence: None,
+        };
+
+        let result = run_final_dedup(vec![conn_a, conn_b]);
+        assert_eq!(
+            result.len(),
+            2,
+            "connections with different non-empty target_name must both be kept (different keys)"
+        );
+    }
+
+    #[test]
+    fn test_final_dedup_empty_target_coexists_with_specific_target() {
+        use crate::types::{Confidence, ConnectionInfo};
+
+        // library_resolution connection with empty target_name
+        let libres_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: String::new(),
+            extraction_method: "library_resolution:redis-py\u{2192}redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::Medium,
+            dependency: Some("redis-py".to_string()),
+            evidence: None,
+        };
+        // pattern connection with specific target_name
+        let pattern_conn = ConnectionInfo {
+            source_file: "src/app.py".to_string(),
+            protocol: "redis".to_string(),
+            target_name: "redis.host:6379".to_string(),
+            extraction_method: "pattern:py-redis".to_string(),
+            source_service: String::new(),
+            method: None,
+            path: None,
+            confidence: Confidence::High,
+            dependency: Some("py-redis".to_string()),
+            evidence: None,
+        };
+
+        let result = run_final_dedup(vec![libres_conn, pattern_conn]);
+        assert_eq!(
+            result.len(),
+            2,
+            "empty target_name and non-empty target_name produce different keys — both must survive"
         );
     }
 }
