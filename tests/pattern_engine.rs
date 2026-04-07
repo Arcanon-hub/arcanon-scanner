@@ -945,3 +945,217 @@ fn test_phase8_kubernetes_file_patterns_scopes_to_python() {
         "py-kubernetes pattern must not fire on .ts files due to file_patterns restriction"
     );
 }
+
+// =============================================================================
+// DQ-04: EnvDefault integration tests — 10 CDN pattern simulation
+// =============================================================================
+
+fn make_env_pattern(id: &str, language: &str, match_str: &str, import_gate: Vec<&str>) -> Pattern {
+    Pattern {
+        id: id.to_string(),
+        name: id.to_string(),
+        description: format!("CDN env pattern: {}", id),
+        languages: vec![language.to_string()],
+        file_patterns: vec![],
+        import_gate: import_gate.into_iter().map(str::to_string).collect(),
+        detections: vec![Detection {
+            match_str: match_str.to_string(),
+            kind: "connection".to_string(),
+            protocol: "env".to_string(),
+            confidence: PatternConfidence::Low,
+            target_extraction: TargetExtraction::EnvDefault,
+        }],
+    }
+}
+
+#[test]
+fn test_py_env_getenv_extracts_default() {
+    let pattern = make_env_pattern("py-env-getenv", "python", "os.getenv(", vec!["import os"]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/app.py"),
+        relative_path: "app.py".to_string(),
+        content: Arc::from(
+            "import os\nDATABASE_URL = os.getenv(\"DATABASE_URL\", \"postgres://localhost/db\")\nconn = connect(DATABASE_URL)",
+        ),
+    };
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert!(!result.connections.is_empty(), "Should fire on os.getenv(");
+    assert_eq!(
+        result.connections[0].target_name, "postgres://localhost/db",
+        "py-env-getenv: must extract default from second arg (ROADMAP DQ-04 criterion 4)"
+    );
+}
+
+#[test]
+fn test_py_env_environ_extracts_default() {
+    let pattern = make_env_pattern("py-env-environ", "python", "os.environ.get(", vec!["import os"]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/app.py"),
+        relative_path: "app.py".to_string(),
+        content: Arc::from(
+            "import os\nREDIS_URL = os.environ.get(\"REDIS_URL\", \"redis://localhost:6379\")\nclient = Redis(REDIS_URL)",
+        ),
+    };
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(result.connections[0].target_name, "redis://localhost:6379");
+}
+
+#[test]
+fn test_ts_env_process_extracts_default() {
+    let pattern = make_env_pattern("ts-env-process", "typescript", "process.env.", vec![]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/app.ts"),
+        relative_path: "app.ts".to_string(),
+        content: Arc::from(
+            "const DB_URL = process.env.DB_URL ?? \"postgres://localhost/app\"\nnew Client(DB_URL)",
+        ),
+    };
+    let result = registry.apply_all(&[file], "typescript", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(result.connections[0].target_name, "postgres://localhost/app");
+}
+
+#[test]
+fn test_go_env_getenv_emits_hint() {
+    let pattern = make_env_pattern("go-env-getenv", "go", "os.Getenv(", vec!["\"os\""]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/main.go"),
+        relative_path: "main.go".to_string(),
+        content: Arc::from("import \"os\"\nurl := os.Getenv(\"DATABASE_URL\")"),
+    };
+    let result = registry.apply_all(&[file], "go", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(
+        result.connections[0].target_name, "env:DATABASE_URL",
+        "go-env-getenv: tier 1 only, must emit env: hint"
+    );
+}
+
+#[test]
+fn test_rs_env_var_extracts_default() {
+    let pattern = make_env_pattern("rs-env-var", "rust", "env::var(", vec!["use std::env"]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/src/main.rs"),
+        relative_path: "src/main.rs".to_string(),
+        content: Arc::from(
+            "use std::env;\nlet db = env::var(\"DATABASE_URL\").unwrap_or(\"postgres://localhost/dev\");\nPgPool::connect(&db)",
+        ),
+    };
+    let result = registry.apply_all(&[file], "rust", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(result.connections[0].target_name, "postgres://localhost/dev");
+}
+
+#[test]
+fn test_rb_env_fetch_extracts_default() {
+    let pattern = make_env_pattern("rb-env-fetch", "ruby", "ENV.fetch(", vec![]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/app.rb"),
+        relative_path: "app.rb".to_string(),
+        content: Arc::from(
+            "DATABASE_URL = ENV.fetch(\"DATABASE_URL\", \"postgres://localhost/app\")\nActiveRecord::Base.establish_connection(DATABASE_URL)",
+        ),
+    };
+    let result = registry.apply_all(&[file], "ruby", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(result.connections[0].target_name, "postgres://localhost/app");
+}
+
+#[test]
+fn test_rb_env_bracket_extracts_default() {
+    let pattern = make_env_pattern("rb-env-bracket", "ruby", "ENV[", vec![]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/app.rb"),
+        relative_path: "app.rb".to_string(),
+        content: Arc::from(
+            "REDIS_URL = ENV[\"REDIS_URL\"] || \"redis://localhost\"\nRedis.new(url: REDIS_URL)",
+        ),
+    };
+    let result = registry.apply_all(&[file], "ruby", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(result.connections[0].target_name, "redis://localhost");
+}
+
+#[test]
+fn test_java_env_value_annotation_inline() {
+    let pattern = make_env_pattern("java-env-value", "java", "@Value(\"${", vec![]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/src/Config.java"),
+        relative_path: "src/Config.java".to_string(),
+        content: Arc::from(
+            "@Value(\"${spring.datasource.url:jdbc:postgresql://localhost/db}\")\nprivate String dbUrl;",
+        ),
+    };
+    let result = registry.apply_all(&[file], "java", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(result.connections[0].target_name, "jdbc:postgresql://localhost/db");
+}
+
+#[test]
+fn test_java_env_getenv_emits_hint() {
+    let pattern = make_env_pattern("java-env-getenv", "java", "System.getenv(", vec![]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/src/Main.java"),
+        relative_path: "src/Main.java".to_string(),
+        content: Arc::from("String url = System.getenv(\"DATABASE_URL\");"),
+    };
+    let result = registry.apply_all(&[file], "java", &HashMap::new());
+    assert!(!result.connections.is_empty());
+    assert_eq!(
+        result.connections[0].target_name, "env:DATABASE_URL",
+        "java-env-getenv: tier 1 only, must emit env: hint"
+    );
+}
+
+#[test]
+fn test_cs_env_config_emits_hint() {
+    // C# IConfiguration is tier-1 only — emits env: hint, no default extraction
+    // match_str is "IConfiguration" which appears in the constructor injection
+    let pattern = make_env_pattern("cs-env-config", "csharp", "IConfiguration", vec![]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/src/Startup.cs"),
+        relative_path: "src/Startup.cs".to_string(),
+        content: Arc::from(
+            "public Startup(IConfiguration config) {\nvar url = config.GetConnectionString(\"DATABASE_URL\");\n}",
+        ),
+    };
+    let result = registry.apply_all(&[file], "csharp", &HashMap::new());
+    assert!(!result.connections.is_empty(), "Should fire on IConfiguration match");
+    assert_eq!(
+        result.connections[0].target_name, "env:DATABASE_URL",
+        "cs-env-config: tier 1 only, must emit env: hint (per DQ-04)"
+    );
+}
+
+#[test]
+fn test_env_default_no_default_emits_env_hint() {
+    // Python getenv with no second arg — no default found
+    let pattern = make_env_pattern("py-env-getenv", "python", "os.getenv(", vec!["import os"]);
+    let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
+    let file = FileContext {
+        path: PathBuf::from("/repo/app.py"),
+        relative_path: "app.py".to_string(),
+        content: Arc::from(
+            "import os\nDATABASE_URL = os.getenv(\"DATABASE_URL\")\nconn = connect(DATABASE_URL)",
+        ),
+    };
+    let result = registry.apply_all(&[file], "python", &HashMap::new());
+    // The os.getenv line fires on the assignment line itself (contains "os.getenv(")
+    // There is no second arg so the result should be env:DATABASE_URL
+    let targets: Vec<&str> = result.connections.iter().map(|c| c.target_name.as_str()).collect();
+    assert!(
+        targets.iter().any(|t| *t == "env:DATABASE_URL"),
+        "Must emit env:DATABASE_URL when no default found; got: {:?}", targets
+    );
+}

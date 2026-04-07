@@ -599,18 +599,27 @@ fn extract_env_default(lines: &[&str], line_idx: usize, language: &str) -> Strin
             .unwrap_or_default();
     }
 
-    // Tier-1 only languages: emit env hint without backward scan
+    // Tier-1 only languages: emit env hint without backward scan.
+    // Look at matched line first, then up to 5 lines forward for a quoted string
+    // (C# IConfiguration is on the constructor line; the GetConnectionString call is next).
     if matches!(language, "go" | "csharp" | "java") {
-        return extract_first_string(matched_line)
-            .map(|v| format!("env:{}", v))
-            .unwrap_or_default();
+        let forward_end = (line_idx + 6).min(lines.len());
+        let candidates = &lines[line_idx..forward_end];
+        for candidate in candidates {
+            if let Some(v) = extract_first_string(candidate) {
+                return format!("env:{}", v);
+            }
+        }
+        return String::new();
     }
 
-    // Backward scan: up to 20 lines before line_idx
+    // Backward scan: up to 20 lines before and including line_idx
     // We look for language-specific env var assignment patterns and extract the default
     // from the scan line itself (not keyed on the matched-line variable name).
+    // Include the matched line itself — env var assignment may be on the same line as the match_str
+    // (e.g. `DATABASE_URL = os.getenv("DATABASE_URL", "default")` matches `os.getenv(`).
     let scan_start = line_idx.saturating_sub(20);
-    let window = &lines[scan_start..line_idx];
+    let window = &lines[scan_start..=line_idx];
 
     // Also track the first env var name seen in the scan window for the fallback hint
     let mut scan_var_name: Option<String> = None;
