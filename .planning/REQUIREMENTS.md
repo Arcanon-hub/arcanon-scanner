@@ -53,12 +53,12 @@ These improvements are valuable but deferred to later milestones or hub work:
 
 | REQ-ID | Phase | Notes |
 |--------|-------|-------|
-| DQ-01 | — | |
-| DQ-02 | — | |
-| DQ-03 | — | |
-| DQ-04 | — | |
-| DQ-05 | — | |
-| DQ-06 | — | |
-| DQ-07 | — | |
-| DQ-08 | — | |
-| DQ-09 | — | |
+| DQ-01 | Phase 13 | Payload Schema and Dedup |
+| DQ-02 | Phase 13 | Payload Schema and Dedup |
+| DQ-03 | Phase 13 | Payload Schema and Dedup |
+| DQ-04 | Phase 14 | Env Var Target Extraction |
+| DQ-05 | Phase 15 | Config Plugin Enhancements |
+| DQ-06 | Phase 15 | Config Plugin Enhancements |
+| DQ-07 | Phase 15 | Config Plugin Enhancements |
+| DQ-08 | Phase 15 | Config Plugin Enhancements |
+| DQ-09 | Phase 16 | Spring Boot Plugin |
