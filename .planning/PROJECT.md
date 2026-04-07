@@ -48,9 +48,9 @@ Accurately detect services, endpoints, and connections across 7 languages and 8 
 
 ### Active
 
-- [ ] DQ-01: `extraction_method` exposed in `ConnectionPayload` and serialized to hub
-- [ ] DQ-02: `dependency` field added to `ConnectionInfo` and `ConnectionPayload`, populated across all sources
-- [ ] DQ-03: Final dedup pass in assembler — `(source_file, protocol, target_name)` key, pattern > wrapper > library_resolution priority
+- ✓ DQ-01: `extraction_method` exposed in `ConnectionPayload` and serialized to hub — Phase 13
+- ✓ DQ-02: `dependency` field added to `ConnectionInfo` and `ConnectionPayload`, populated across all sources — Phase 13
+- ✓ DQ-03: Final dedup pass in assembler — `(source_file, protocol, target_name)` key, pattern > wrapper > library_resolution priority — Phase 13
 - [ ] DQ-04: `TargetExtraction::EnvDefault` strategy in pattern engine + CDN patterns for py/ts/go/java/cs/rb/rs
 - [ ] DQ-05: `.env` plugin emits connections for URL-like key matches (`*_URL`, `*_HOST`, `DATABASE_URL`, etc.)
 - [ ] DQ-06: Compose plugin emits connections from `environment:` blocks with URL-like values
@@ -103,4 +103,4 @@ AI skills: `npx skills add arcanon-hub/arcanon-skills`
 This document evolves at phase transitions and milestone boundaries.
 
 ---
-*Last updated: 2026-04-07 — Milestone v1.2 Data Quality started*
+*Last updated: 2026-04-07 — Phase 13 complete (DQ-01, DQ-02, DQ-03 validated)*
