@@ -1,7 +1,11 @@
 use crate::plugin::{ExtractionContext, LanguagePlugin};
-use crate::types::{Confidence, EndpointInfo, ExtractionResult, FieldInfo, SchemaInfo};
+use crate::types::{
+    Confidence, ConnectionInfo, EndpointInfo, ExtractionResult, FieldInfo, SchemaInfo,
+};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
+
+use super::url_util::parse_url_value;
 
 /// Type alias for OpenAPI/Swagger parse result
 type ParseResult = Result<
@@ -9,6 +13,7 @@ type ParseResult = Result<
         Option<crate::types::ServiceInfo>,
         Vec<EndpointInfo>,
         Vec<SchemaInfo>,
+        Vec<ConnectionInfo>,
     ),
     String,
 >;
@@ -51,12 +56,13 @@ impl LanguagePlugin for OpenApiPlugin {
             {
                 // OpenAPI 3.0
                 match parse_openapi_3(&file.content, &file.relative_path) {
-                    Ok((service, endpoints, schemas)) => {
+                    Ok((service, endpoints, schemas, connections)) => {
                         if let Some(svc) = service {
                             result.services.push(svc);
                         }
                         result.endpoints.extend(endpoints);
                         result.schemas.extend(schemas);
+                        result.connections.extend(connections);
                     }
                     Err(e) => {
                         warn!("openapi: failed to parse {}: {}", file.relative_path, e);
@@ -67,12 +73,13 @@ impl LanguagePlugin for OpenApiPlugin {
             {
                 // Swagger 2.0
                 match parse_swagger_2(&file.content, &file.relative_path) {
-                    Ok((service, endpoints, schemas)) => {
+                    Ok((service, endpoints, schemas, connections)) => {
                         if let Some(svc) = service {
                             result.services.push(svc);
                         }
                         result.endpoints.extend(endpoints);
                         result.schemas.extend(schemas);
+                        result.connections.extend(connections);
                     }
                     Err(e) => {
                         warn!("openapi: failed to parse {}: {}", file.relative_path, e);
@@ -110,6 +117,25 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
         confidence: Confidence::High,
         extraction_method: "spec:openapi".to_string(),
     };
+
+    // Extract connections from servers
+    let mut connections = Vec::new();
+    for server in &spec.servers {
+        if let Some((protocol, hostname)) = parse_url_value(&server.url) {
+            connections.push(ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: hostname,
+                protocol,
+                method: None,
+                path: None,
+                source_file: format!("{}:0", relative_path),
+                confidence: Confidence::Medium,
+                extraction_method: "spec:openapi".to_string(),
+                dependency: None,
+                evidence: Some(format!("servers[].url = {}", server.url)),
+            });
+        }
+    }
 
     // Extract endpoints from paths
     let paths_map = spec.paths.paths;
@@ -161,7 +187,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
         }
     }
 
-    Ok((Some(service), endpoints, schemas))
+    Ok((Some(service), endpoints, schemas, connections))
 }
 
 /// Extract fields from an OpenAPI Schema
@@ -221,6 +247,8 @@ fn format_type(schema: &openapiv3::Schema) -> String {
 struct SwaggerSpec {
     swagger: Option<String>,
     info: SwaggerInfo,
+    host: Option<String>,
+    base_path: Option<String>,
     paths: Option<std::collections::HashMap<String, SwaggerPathItem>>,
 }
 
@@ -281,6 +309,27 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
         extraction_method: "spec:openapi".to_string(),
     };
 
+    // Extract connection from host field
+    let mut connections = Vec::new();
+    if let Some(host) = &spec.host {
+        // Swagger 2.0 host is bare hostname[:port], not a full URL — prepend http:// for parsing
+        let synthetic_url = format!("http://{}", host);
+        if let Some((_protocol, hostname)) = parse_url_value(&synthetic_url) {
+            connections.push(ConnectionInfo {
+                source_service: service_name.clone(),
+                target_name: hostname,
+                protocol: "http".to_string(), // Swagger 2.0 host is scheme-agnostic; default http
+                method: None,
+                path: None,
+                source_file: format!("{}:0", relative_path),
+                confidence: Confidence::Medium,
+                extraction_method: "spec:openapi".to_string(),
+                dependency: None,
+                evidence: Some(format!("host: {}", host)),
+            });
+        }
+    }
+
     // Extract endpoints from paths
     if let Some(paths) = spec.paths {
         for (path_str, path_item) in paths.iter() {
@@ -310,7 +359,7 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
     }
 
     // Swagger 2.0 schemas are in top-level definitions, not components
-    Ok((Some(service), endpoints, Vec::new()))
+    Ok((Some(service), endpoints, Vec::new(), connections))
 }
 
 #[cfg(test)]
@@ -344,7 +393,7 @@ paths:
           description: Success
 "#;
 
-        let (_service, endpoints, _schemas) =
+        let (_service, endpoints, _schemas, _connections) =
             parse_openapi_3(yaml, "test.yaml").expect("parse failed");
 
         assert_eq!(endpoints.len(), 3);
@@ -385,7 +434,7 @@ components:
           type: string
 "#;
 
-        let (_service, _endpoints, schemas) =
+        let (_service, _endpoints, schemas, _connections) =
             parse_openapi_3(yaml, "test.yaml").expect("parse failed");
 
         assert_eq!(schemas.len(), 1);
@@ -422,7 +471,7 @@ paths:
       operationId: createUser
 "#;
 
-        let (_service, endpoints, _schemas) =
+        let (_service, endpoints, _schemas, _connections) =
             parse_swagger_2(yaml, "swagger.yaml").expect("parse failed");
 
         assert_eq!(endpoints.len(), 2);
@@ -450,5 +499,119 @@ paths:
     fn test_plugin_always_run() {
         let plugin = OpenApiPlugin;
         assert!(plugin.always_run());
+    }
+
+    #[test]
+    fn test_oas3_servers_extraction() {
+        let yaml = r#"
+openapi: "3.0.3"
+info:
+  title: My Service
+  version: "1.0.0"
+servers:
+  - url: "https://api.example.com/v2"
+paths: {}
+"#;
+
+        let (_service, _endpoints, _schemas, connections) =
+            parse_openapi_3(yaml, "test.yaml").expect("parse failed");
+
+        assert_eq!(connections.len(), 1);
+        let conn = &connections[0];
+        assert_eq!(conn.protocol, "http");
+        assert_eq!(conn.target_name, "api.example.com");
+        assert_eq!(conn.confidence, Confidence::Medium);
+        assert_eq!(conn.extraction_method, "spec:openapi");
+    }
+
+    #[test]
+    fn test_oas3_servers_template_skipped() {
+        let yaml = r#"
+openapi: "3.0.3"
+info:
+  title: My Service
+  version: "1.0.0"
+servers:
+  - url: "https://{server}/v2"
+paths: {}
+"#;
+
+        let (_service, _endpoints, _schemas, connections) =
+            parse_openapi_3(yaml, "test.yaml").expect("parse failed");
+
+        assert_eq!(connections.len(), 0);
+    }
+
+    #[test]
+    fn test_oas3_multiple_servers() {
+        let yaml = r#"
+openapi: "3.0.3"
+info:
+  title: My Service
+  version: "1.0.0"
+servers:
+  - url: "https://api.example.com/v1"
+  - url: "https://staging.example.com/v1"
+paths: {}
+"#;
+
+        let (_service, _endpoints, _schemas, connections) =
+            parse_openapi_3(yaml, "test.yaml").expect("parse failed");
+
+        assert_eq!(connections.len(), 2);
+    }
+
+    #[test]
+    fn test_swagger2_host_extraction() {
+        let yaml = r#"
+swagger: "2.0"
+info:
+  title: My API
+  version: "1.0.0"
+host: "api.example.com"
+paths: {}
+"#;
+
+        let (_service, _endpoints, _schemas, connections) =
+            parse_swagger_2(yaml, "swagger.yaml").expect("parse failed");
+
+        assert_eq!(connections.len(), 1);
+        let conn = &connections[0];
+        assert_eq!(conn.target_name, "api.example.com");
+        assert_eq!(conn.protocol, "http");
+    }
+
+    #[test]
+    fn test_swagger2_host_with_port() {
+        let yaml = r#"
+swagger: "2.0"
+info:
+  title: My API
+  version: "1.0.0"
+host: "api.example.com:8080"
+paths: {}
+"#;
+
+        let (_service, _endpoints, _schemas, connections) =
+            parse_swagger_2(yaml, "swagger.yaml").expect("parse failed");
+
+        assert_eq!(connections.len(), 1);
+        assert_eq!(connections[0].target_name, "api.example.com");
+    }
+
+    #[test]
+    fn test_swagger2_no_host() {
+        let yaml = r#"
+swagger: "2.0"
+info:
+  title: My API
+  version: "1.0.0"
+paths: {}
+"#;
+
+        let (_service, _endpoints, _schemas, connections) =
+            parse_swagger_2(yaml, "swagger.yaml").expect("parse failed");
+
+        assert_eq!(connections.len(), 0);
     }
 }
