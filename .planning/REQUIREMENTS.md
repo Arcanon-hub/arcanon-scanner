@@ -26,7 +26,7 @@
 - [x] **DQ-06**: Compose plugin (`plugin/config/compose.rs`) emits `ConnectionInfo` entries for `environment:` block values that are URL-like — source service is the compose service name, target extracted from hostname
 - [x] **DQ-07**: OpenAPI plugin (`plugin/config/openapi.rs`) parses `servers[].url` (OpenAPI 3.0) and `host + basePath` (Swagger 2.0) and stores as service metadata / emits as connection hints
 - [x] **DQ-08**: Kubernetes plugin (`plugin/config/kubernetes.rs`) parses `spec.template.spec.containers[].env` entries and emits connections for URL-like values — source is the Deployment name
-- [ ] **DQ-09**: New `plugin/config/spring.rs` plugin parses `application*.properties` and `application*.yml` for Spring connection keys (`spring.datasource.url`, `spring.redis.host`, `spring.kafka.bootstrap-servers`, `spring.rabbitmq.host`, etc.) and emits connections with extracted hostnames and protocols
+- [x] **DQ-09**: New `plugin/config/spring.rs` plugin parses `application*.properties` and `application*.yml` for Spring connection keys (`spring.datasource.url`, `spring.redis.host`, `spring.kafka.bootstrap-servers`, `spring.rabbitmq.host`, etc.) and emits connections with extracted hostnames and protocols
 
 ---
 
