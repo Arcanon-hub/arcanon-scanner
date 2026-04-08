@@ -172,6 +172,7 @@ pub fn default_plugins() -> Vec<Box<dyn LanguagePlugin>> {
         Box::new(config::KubernetesPlugin),
         Box::new(config::DockerfilePlugin),
         Box::new(config::EnvPlugin),
+        Box::new(config::SpringPlugin),
         // Language plugins (run when files match)
         Box::new(lang::TypeScriptPlugin),
         Box::new(lang::PythonPlugin),
