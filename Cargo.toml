@@ -71,9 +71,19 @@ apollo-parser = "0.8"
 protobuf-parse = { version = "3.7", default-features = false }
 
 # ML Refinement (Phase 15)
+# ort is split by platform: on Windows the ONNX Runtime static libs ship with /MD (dynamic CRT),
+# which conflicts with /MT (static CRT) used by tokenizers/esaxx_rs. load-dynamic side-steps the
+# CRT mismatch by dlopening onnxruntime.dll at runtime instead of linking statically.
+# On Linux/macOS there is no CRT concept so static linking works fine.
+tokenizers = "0.15.2"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
 ort = { version = "= 2.0.0-rc.9" }
 ort-sys = { version = "= 2.0.0-rc.9" }
-tokenizers = "0.15.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "= 2.0.0-rc.9", features = ["load-dynamic"] }
+ort-sys = { version = "= 2.0.0-rc.9" }
 
 [dev-dependencies]
 tempfile = "3"
