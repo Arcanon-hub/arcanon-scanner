@@ -101,8 +101,7 @@ impl LanguagePlugin for KubernetesPlugin {
                                             service_type: "service".to_string(),
                                             boundary_entry: None,
                                             confidence: Confidence::High,
-                                            extraction_method: "kubernetes".to_string(),
-                                            ..Default::default()
+                                            extraction_method: "kubernetes".to_string()
                                         });
 
                                         // Extract connections from containers[].env
@@ -133,7 +132,8 @@ impl LanguagePlugin for KubernetesPlugin {
                                                                         extraction_method: "kubernetes".to_string(),
                                                                         dependency: None,
                                                                         evidence: Some(format!("{}={}", env_var.name, val)),
-                                                                        ..Default::default()
+                                                                        ml_confidence: None,
+                                                                        ml_reasoning: None,
                                                                     });
                                                                 }
                                                             }
@@ -166,8 +166,7 @@ impl LanguagePlugin for KubernetesPlugin {
                                             service_type: "service".to_string(),
                                             boundary_entry: None,
                                             confidence: Confidence::High,
-                                            extraction_method: "kubernetes".to_string(),
-                                            ..Default::default()
+                                            extraction_method: "kubernetes".to_string()
                                         });
                                         // no container env traversal for Service kind
                                     }
@@ -205,7 +204,7 @@ fn parse_url_value(val: &str) -> Option<(String, String)> {
         let rest = &val[pos + 3..];
 
         // Find end of hostname (next / or : or end of string)
-        let end = rest.find(|c| c == '/' || c == ':').unwrap_or(rest.len());
+        let end = rest.find(['/', ':']).unwrap_or(rest.len());
         let hostname = rest[..end].to_string();
 
         if !hostname.is_empty() {

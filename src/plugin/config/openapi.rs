@@ -115,8 +115,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
         service_type: "service".to_string(),
         boundary_entry: Some(relative_path.to_string()),
         confidence: Confidence::High,
-        extraction_method: "spec:openapi".to_string(),
-        ..Default::default()
+        extraction_method: "spec:openapi".to_string()
     };
 
     // Extract connections from servers
@@ -134,7 +133,8 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
                 extraction_method: "spec:openapi".to_string(),
                 dependency: None,
                 evidence: Some(format!("servers[].url = {}", server.url)),
-                ..Default::default()
+                ml_confidence: None,
+                ml_reasoning: None,
             });
         }
     }
@@ -163,8 +163,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
                         handler: op.operation_id.clone(),
                         kind: "rest".to_string(),
                         confidence: Confidence::High,
-                        extraction_method: "spec:openapi".to_string(),
-                        ..Default::default()
+                        extraction_method: "spec:openapi".to_string()
                     });
                 }
             }
@@ -184,8 +183,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
                     connection_ref: None,
                     fields,
                     confidence: Confidence::High,
-                    extraction_method: "spec:openapi".to_string(),
-                    ..Default::default()
+                    extraction_method: "spec:openapi".to_string()
                 });
             }
         }
@@ -310,8 +308,7 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
         service_type: "service".to_string(),
         boundary_entry: Some(relative_path.to_string()),
         confidence: Confidence::High,
-        extraction_method: "spec:openapi".to_string(),
-        ..Default::default()
+        extraction_method: "spec:openapi".to_string()
     };
 
     // Extract connection from host field
@@ -331,7 +328,8 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
                 extraction_method: "spec:openapi".to_string(),
                 dependency: None,
                 evidence: Some(format!("host: {}", host)),
-                ..Default::default()
+                ml_confidence: None,
+                ml_reasoning: None,
             });
         }
     }
@@ -357,8 +355,7 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
                         handler: op.operation_id.clone(),
                         kind: "rest".to_string(),
                         confidence: Confidence::High,
-                        extraction_method: "spec:openapi".to_string(),
-                        ..Default::default()
+                        extraction_method: "spec:openapi".to_string()
                     });
                 }
             }

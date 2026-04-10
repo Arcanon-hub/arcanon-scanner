@@ -106,8 +106,7 @@ impl LanguagePlugin for ComposePlugin {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string(),
-                    ..Default::default()
+                    extraction_method: "compose".to_string()
                 });
             }
 
@@ -125,7 +124,8 @@ impl LanguagePlugin for ComposePlugin {
                         extraction_method: "compose".to_string(),
                         dependency: None,
                         evidence: Some(format!("{} depends_on {}", service_name, dep_name)),
-                        ..Default::default()
+                        ml_confidence: None,
+                        ml_reasoning: None,
                     });
                 }
             }
@@ -169,7 +169,8 @@ impl LanguagePlugin for ComposePlugin {
                             extraction_method: "compose".to_string(),
                             dependency: None,
                             evidence: Some(format!("{}={}", key, val)),
-                            ..Default::default()
+                            ml_confidence: None,
+                            ml_reasoning: None,
                         });
                     }
                 }
