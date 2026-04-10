@@ -85,8 +85,7 @@ fn make_config(root: PathBuf) -> arcanon::core::scanner::ScannerConfig {
     arcanon::core::scanner::ScannerConfig {
         root,
         dry_run: true,
-        hub_url: "https://hub.example.com".to_string(),
-        api_key: "test-key".to_string(),
+        hub_url: Some("https://hub.example.com".to_string()),
         project_slug: "v1.1-validation".to_string(),
         output: None,
         plugin_filter: None,
@@ -95,6 +94,7 @@ fn make_config(root: PathBuf) -> arcanon::core::scanner::ScannerConfig {
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
         user_pattern_overrides: vec![],
         disabled_patterns: vec![],
+        ..Default::default()
     }
 }
 
@@ -162,8 +162,7 @@ fn fastapi_docstring_and_kubernetes() {
     let config = arcanon::core::scanner::ScannerConfig {
         root,
         dry_run: true,
-        hub_url: "https://hub.example.com".to_string(),
-        api_key: "test-key".to_string(),
+        hub_url: Some("https://hub.example.com".to_string()),
         project_slug: "v1.1-validation".to_string(),
         output: None,
         plugin_filter: None,
@@ -172,6 +171,7 @@ fn fastapi_docstring_and_kubernetes() {
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
         user_pattern_overrides: vec![py_kubernetes_pattern(), py_opcua_pattern()],
         disabled_patterns: vec![],
+        ..Default::default()
     };
 
     let payload = {
@@ -332,8 +332,7 @@ fn full_fixture_scan_with_arcanon_toml() {
     let config = arcanon::core::scanner::ScannerConfig {
         root,
         dry_run: true,
-        hub_url: "https://hub.example.com".to_string(),
-        api_key: "test-key".to_string(),
+        hub_url: Some("https://hub.example.com".to_string()),
         project_slug: "v1.1-validation".to_string(),
         output: None,
         plugin_filter: None,
@@ -343,6 +342,7 @@ fn full_fixture_scan_with_arcanon_toml() {
         // Inject py-kubernetes so the full scan also finds kubernetes connections
         user_pattern_overrides: vec![py_kubernetes_pattern(), py_opcua_pattern()],
         disabled_patterns: vec![],
+        ..Default::default()
     };
 
     let payload = {

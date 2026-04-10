@@ -21,5 +21,9 @@ target
 #.idea/
 *.json
 
+# ML model files are runtime artifacts — use ml_research/fetch_base_model.py to generate
+models/*
+!models/README.md
+
 # Claude Code worktrees
 .claude/

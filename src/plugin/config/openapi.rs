@@ -133,6 +133,8 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
                 extraction_method: "spec:openapi".to_string(),
                 dependency: None,
                 evidence: Some(format!("servers[].url = {}", server.url)),
+                ml_confidence: None,
+                ml_reasoning: None,
             });
         }
     }
@@ -326,6 +328,8 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
                 extraction_method: "spec:openapi".to_string(),
                 dependency: None,
                 evidence: Some(format!("host: {}", host)),
+                ml_confidence: None,
+                ml_reasoning: None,
             });
         }
     }

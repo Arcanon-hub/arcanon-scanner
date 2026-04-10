@@ -124,6 +124,8 @@ impl LanguagePlugin for ComposePlugin {
                         extraction_method: "compose".to_string(),
                         dependency: None,
                         evidence: Some(format!("{} depends_on {}", service_name, dep_name)),
+                        ml_confidence: None,
+                        ml_reasoning: None,
                     });
                 }
             }
@@ -167,6 +169,8 @@ impl LanguagePlugin for ComposePlugin {
                             extraction_method: "compose".to_string(),
                             dependency: None,
                             evidence: Some(format!("{}={}", key, val)),
+                            ml_confidence: None,
+                            ml_reasoning: None,
                         });
                     }
                 }

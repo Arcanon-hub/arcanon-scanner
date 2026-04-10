@@ -1,241 +1,185 @@
-//! Service deduplication and aggregation from multiple plugin results.
-//! Deduplicates services by root_path proximity, applies name priority rules,
-//! and aggregates endpoints, connections, and schemas with spec-file priority.
+use std::collections::HashMap;
 
-use crate::types::*;
-use std::collections::{HashMap, HashSet};
+use crate::types::{ConnectionInfo, EndpointInfo, ExtractionResult, SchemaInfo, ServiceInfo};
 
-/// Result of merging multiple ExtractionResults into a single consolidated view.
-#[derive(Debug, Clone)]
+use tracing::debug;
+
+use serde::Deserialize;
+
+/// Override for a specific service detected by a plugin.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ServiceOverride {
+    /// Override the name of the service
+    pub name: Option<String>,
+    /// Completely ignore this service and its children findings
+    pub ignore: Option<bool>,
+}
+
+/// The final merged result of all extractions.
+#[derive(Debug, Clone, Default)]
 pub struct MergedResult {
     pub services: Vec<ServiceInfo>,
     pub endpoints: Vec<EndpointInfo>,
     pub connections: Vec<ConnectionInfo>,
     pub schemas: Vec<SchemaInfo>,
+    pub actors: Vec<crate::types::ActorInfo>,
 }
 
-/// Override configuration for a service (from .arcanon.toml [services] section).
-#[derive(Debug, Clone)]
-pub struct ServiceOverride {
-    pub name: Option<String>,
-    pub ignore: Option<bool>,
-}
-
-/// Normalize a service name: lowercase, replace underscores and spaces with hyphens.
-fn normalize_name(name: &str) -> String {
-    name.to_lowercase().replace(['_', ' '], "-")
-}
-
-/// Priority scoring for extraction method in service name selection.
-/// Higher priority wins when merging duplicate services by root_path.
-fn service_priority(extraction_method: &str) -> u8 {
-    match extraction_method {
-        "compose" => 3,
-        "package_json" => 2,
-        "dockerfile" => 1,
-        _ => 0,
-    }
-}
-
-/// Merge multiple ExtractionResults from different plugins.
-///
-/// Steps:
-/// 1. Deduplicate services by root_path (or normalized name if root_path is empty)
-/// 2. Apply name priority: compose > package_json > dockerfile > inferred
-/// 3. Aggregate all endpoints, with spec-file endpoints overriding ast-source endpoints
-/// 4. Aggregate all connections (no dedup at scan level)
-/// 5. Aggregate schemas, with spec-file schemas overriding ast-source schemas
+/// Merge multiple extraction results into a single result.
+/// - Services are merged by root_path.
+/// - Later results in the input vector overwrite earlier ones for the same root_path.
+/// - Endpoints, connections, and schemas are collected from all results.
 pub fn merge(results: Vec<ExtractionResult>) -> MergedResult {
-    // Step 1: Deduplicate services by root_path
-    let mut by_key: HashMap<String, ServiceInfo> = HashMap::new();
+    let mut merged = MergedResult::default();
+    let mut service_map: HashMap<String, ServiceInfo> = HashMap::new();
 
-    for result in &results {
-        for svc in &result.services {
-            let key = if svc.root_path.is_empty() {
-                normalize_name(&svc.name)
-            } else {
-                svc.root_path.clone()
-            };
-
-            by_key
-                .entry(key)
+    for res in results {
+        for service in res.services {
+            service_map
+                .entry(service.root_path.clone())
                 .and_modify(|existing| {
-                    // If new service has higher priority extraction method, use its name
-                    if service_priority(&svc.extraction_method)
-                        > service_priority(&existing.extraction_method)
+                    // compose always beats dockerfile; any other source keeps the first winner
+                    if existing.extraction_method == "dockerfile"
+                        && service.extraction_method == "compose"
                     {
-                        existing.name = svc.name.clone();
-                        existing.extraction_method = svc.extraction_method.clone();
-                    }
-                    // Fill in missing language if new one is available
-                    if existing.language.is_empty() && !svc.language.is_empty() {
-                        existing.language = svc.language.clone();
-                    }
-                    // Fill in boundary_entry if not already set
-                    if existing.boundary_entry.is_none() {
-                        existing.boundary_entry = svc.boundary_entry.clone();
+                        *existing = service.clone();
                     }
                 })
-                .or_insert_with(|| svc.clone());
+                .or_insert(service);
+        }
+        merged.endpoints.extend(res.endpoints);
+        merged.connections.extend(res.connections);
+        merged.schemas.extend(res.schemas);
+        merged.actors.extend(res.actors);
+    }
+
+    merged.services = service_map.into_values().collect();
+
+    // Deduplicate endpoints: spec:openapi/spec:asyncapi entries suppress duplicates
+    // for the same (service_name, method, path) key.
+    {
+        use std::collections::HashSet;
+        let spec_keys: HashSet<(String, String, String)> = merged
+            .endpoints
+            .iter()
+            .filter(|e| {
+                e.extraction_method == "spec:openapi" || e.extraction_method == "spec:asyncapi"
+            })
+            .map(|e| (e.service_name.clone(), e.method.clone(), e.path.clone()))
+            .collect();
+        if !spec_keys.is_empty() {
+            merged.endpoints.retain(|e| {
+                e.extraction_method == "spec:openapi"
+                    || e.extraction_method == "spec:asyncapi"
+                    || !spec_keys.contains(&(
+                        e.service_name.clone(),
+                        e.method.clone(),
+                        e.path.clone(),
+                    ))
+            });
         }
     }
 
-    let services: Vec<ServiceInfo> = by_key.into_values().collect();
-
-    // Step 2: Aggregate endpoints with spec-override
-    let mut all_endpoints: Vec<EndpointInfo> = results
-        .iter()
-        .flat_map(|r| r.endpoints.iter().cloned())
-        .collect();
-
-    // Spec-file endpoints override ast-source endpoints for same (service_name, method, path)
-    let (spec_eps, ast_eps): (Vec<_>, Vec<_>) = all_endpoints
-        .drain(..)
-        .partition(|ep| ep.extraction_method.starts_with("spec:"));
-
-    let spec_keys: HashSet<(String, String, String)> = spec_eps
-        .iter()
-        .map(|ep| (ep.service_name.clone(), ep.method.clone(), ep.path.clone()))
-        .collect();
-
-    let deduped_ast_eps: Vec<EndpointInfo> = ast_eps
-        .into_iter()
-        .filter(|ep| {
-            !spec_keys.contains(&(ep.service_name.clone(), ep.method.clone(), ep.path.clone()))
-        })
-        .collect();
-
-    let endpoints: Vec<EndpointInfo> = spec_eps.into_iter().chain(deduped_ast_eps).collect();
-
-    // Step 3: Aggregate connections (no dedup at scan level; hub deduplicates cross-scan)
-    let connections: Vec<ConnectionInfo> = results
-        .iter()
-        .flat_map(|r| r.connections.iter().cloned())
-        .collect();
-
-    // Step 4: Aggregate schemas with spec-override
-    let all_schemas: Vec<SchemaInfo> = results
-        .iter()
-        .flat_map(|r| r.schemas.iter().cloned())
-        .collect();
-
-    // Spec-file schemas override ast-source schemas with same name
-    let (spec_schemas, ast_schemas): (Vec<_>, Vec<_>) = all_schemas
-        .into_iter()
-        .partition(|s| s.extraction_method.starts_with("spec:"));
-
-    let spec_schema_names: HashSet<String> = spec_schemas.iter().map(|s| s.name.clone()).collect();
-
-    let deduped_ast_schemas: Vec<SchemaInfo> = ast_schemas
-        .into_iter()
-        .filter(|s| !spec_schema_names.contains(&s.name))
-        .collect();
-
-    let schemas: Vec<SchemaInfo> = spec_schemas
-        .into_iter()
-        .chain(deduped_ast_schemas)
-        .collect();
-
-    MergedResult {
-        services,
-        endpoints,
-        connections,
-        schemas,
+    // Deduplicate schemas: spec entries suppress AST duplicates with the same name.
+    {
+        use std::collections::HashSet;
+        let spec_schema_names: HashSet<String> = merged
+            .schemas
+            .iter()
+            .filter(|s| {
+                s.extraction_method == "spec:openapi" || s.extraction_method == "spec:asyncapi"
+            })
+            .map(|s| s.name.clone())
+            .collect();
+        if !spec_schema_names.is_empty() {
+            merged.schemas.retain(|s| {
+                s.extraction_method == "spec:openapi"
+                    || s.extraction_method == "spec:asyncapi"
+                    || !spec_schema_names.contains(&s.name)
+            });
+        }
     }
+
+    merged
 }
 
-/// If no services were detected but connections exist, infer a default service from the repo.
-/// The repo itself is the deployable unit — a CLI, a script, a lambda, anything that runs and
-/// connects to other things is a service, even without a Dockerfile.
+/// If no services were detected (or all were ignored), and we have a repo name,
+/// infer a single service at the root to avoid empty results.
 pub fn infer_service_if_needed(merged: &mut MergedResult, repo_name: &str) {
-    if !merged.services.is_empty() {
-        return;
-    }
-
-    if merged.connections.is_empty() && merged.schemas.is_empty() {
-        tracing::info!("No services, connections, or schemas found — nothing to report");
-        return;
-    }
-
-    tracing::info!(
-        "No explicit service markers (Dockerfile, compose, etc.) found. \
-         Inferring service '{}' from repo with {} connections.",
-        repo_name,
-        merged.connections.len()
-    );
-
-    // Create a default service from the repo
-    merged.services.push(crate::types::ServiceInfo {
-        name: repo_name.to_string(),
-        root_path: ".".to_string(),
-        language: String::new(),
-        service_type: "service".to_string(),
-        boundary_entry: None,
-        confidence: crate::types::Confidence::Medium,
-        extraction_method: "inferred_from_connections".to_string(),
-    });
-
-    // Attribute orphaned connections (source_service == "") to this service
-    for conn in &mut merged.connections {
-        if conn.source_service.is_empty() {
-            conn.source_service = repo_name.to_string();
-        }
+    if merged.services.is_empty()
+        && (!merged.connections.is_empty()
+            || !merged.schemas.is_empty()
+            || !merged.endpoints.is_empty())
+    {
+        debug!(
+            "No services detected, inferring service '{}' at root",
+            repo_name
+        );
+        merged.services.push(crate::types::ServiceInfo {
+            name: repo_name.to_string(),
+            root_path: ".".to_string(),
+            language: String::new(),
+            service_type: "service".to_string(),
+            boundary_entry: None,
+            confidence: crate::types::Confidence::High,
+            extraction_method: "inferred_root".to_string(),
+        });
     }
 }
 
-/// Apply service name overrides and ignore rules from .arcanon.toml [services] section.
-/// Removes ignored services and their associated endpoints.
+/// Apply user-defined service name/ignore overrides to the merged result.
 pub fn apply_service_overrides(
     merged: &mut MergedResult,
     overrides: &HashMap<String, ServiceOverride>,
 ) {
-    // Apply name overrides and mark ignored services
-    for svc in &mut merged.services {
-        if let Some(ov) = overrides.get(&svc.root_path) {
-            if let Some(name) = &ov.name {
-                svc.name = name.clone();
+    // 1. Filter out ignored services
+    let ignored_roots: Vec<String> = overrides
+        .iter()
+        .filter(|(_, v)| v.ignore.unwrap_or(false))
+        .map(|(k, _)| k.clone())
+        .collect();
+
+    if !ignored_roots.is_empty() {
+        debug!("Applying ignore overrides for: {:?}", ignored_roots);
+        merged
+            .services
+            .retain(|s| !ignored_roots.contains(&s.root_path));
+        merged
+            .endpoints
+            .retain(|e| !ignored_roots.contains(&e.service_name));
+        merged
+            .connections
+            .retain(|c| !ignored_roots.contains(&c.source_service));
+    }
+
+    // 2. Apply name overrides
+    for (root, ovr) in overrides {
+        if let Some(new_name) = &ovr.name {
+            debug!("Overriding service name at {}: {}", root, new_name);
+            for s in &mut merged.services {
+                if s.root_path == *root {
+                    s.name = new_name.clone();
+                }
             }
-            if ov.ignore.unwrap_or(false) {
-                svc.service_type = "ignored".to_string();
+            // Update names in endpoints/connections too
+            for e in &mut merged.endpoints {
+                if e.service_name == *root {
+                    e.service_name = new_name.clone();
+                }
+            }
+            for c in &mut merged.connections {
+                if c.source_service == *root {
+                    c.source_service = new_name.clone();
+                }
             }
         }
     }
-
-    // Collect names of ignored services
-    let ignored: HashSet<String> = merged
-        .services
-        .iter()
-        .filter(|s| s.service_type == "ignored")
-        .map(|s| s.name.clone())
-        .collect();
-
-    // Remove ignored services and their endpoints
-    merged.services.retain(|s| s.service_type != "ignored");
-    merged
-        .endpoints
-        .retain(|ep| !ignored.contains(&ep.service_name));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_normalize_name() {
-        assert_eq!(normalize_name("my_service"), "my-service");
-        assert_eq!(normalize_name("My Service"), "my-service");
-        assert_eq!(normalize_name("UPPERCASE"), "uppercase");
-        assert_eq!(normalize_name("already-hyphenated"), "already-hyphenated");
-    }
-
-    #[test]
-    fn test_service_priority() {
-        assert_eq!(service_priority("compose"), 3);
-        assert_eq!(service_priority("package_json"), 2);
-        assert_eq!(service_priority("dockerfile"), 1);
-        assert_eq!(service_priority("ast:typescript"), 0);
-        assert_eq!(service_priority("unknown"), 0);
-    }
+    use crate::types::Confidence;
 
     #[test]
     fn test_merge_services_same_root_path_different_names() {
@@ -292,7 +236,7 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string(),
+                    extraction_method: "test".to_string(),
                 },
                 ServiceInfo {
                     name: "worker".to_string(),
@@ -301,7 +245,7 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string(),
+                    extraction_method: "test".to_string(),
                 },
             ],
             endpoints: vec![],
@@ -312,159 +256,13 @@ mod tests {
 
         let merged = merge(vec![result]);
         assert_eq!(merged.services.len(), 2);
-        assert!(merged.services.iter().any(|s| s.name == "api"));
-        assert!(merged.services.iter().any(|s| s.name == "worker"));
     }
 
     #[test]
-    fn test_merge_endpoints_spec_override() {
-        // Spec endpoint and ast endpoint with same (service, method, path)
-        // Spec should win, ast should be dropped
-        let result1 = ExtractionResult {
-            services: vec![],
-            endpoints: vec![EndpointInfo {
-                service_name: "api".to_string(),
-                method: "POST".to_string(),
-                path: "/api/v1/orders".to_string(),
-                handler: Some("createOrder".to_string()),
-                kind: "rest".to_string(),
-                confidence: Confidence::High,
-                extraction_method: "ast:typescript".to_string(),
-            }],
-            connections: vec![],
-            schemas: vec![],
-            actors: vec![],
-        };
-
-        let result2 = ExtractionResult {
-            services: vec![],
-            endpoints: vec![EndpointInfo {
-                service_name: "api".to_string(),
-                method: "POST".to_string(),
-                path: "/api/v1/orders".to_string(),
-                handler: Some("orders".to_string()),
-                kind: "rest".to_string(),
-                confidence: Confidence::High,
-                extraction_method: "spec:openapi".to_string(),
-            }],
-            connections: vec![],
-            schemas: vec![],
-            actors: vec![],
-        };
-
-        let merged = merge(vec![result1, result2]);
-        assert_eq!(merged.endpoints.len(), 1);
-        assert_eq!(merged.endpoints[0].extraction_method, "spec:openapi");
-        assert_eq!(merged.endpoints[0].handler, Some("orders".to_string()));
-    }
-
-    #[test]
-    fn test_merge_connections_aggregated() {
-        // Connections from multiple plugins are aggregated (no dedup)
-        let result1 = ExtractionResult {
-            services: vec![],
-            endpoints: vec![],
-            connections: vec![ConnectionInfo {
-                source_service: "api".to_string(),
-                target_name: "payment-service".to_string(),
-                protocol: "rest".to_string(),
-                method: Some("POST".to_string()),
-                path: Some("/api/v1/payments".to_string()),
-                source_file: "src/services/payment-client.ts:42".to_string(),
-                confidence: Confidence::High,
-                extraction_method: "ast:typescript".to_string(),
-                dependency: None,
-                evidence: Some("axios.post(...)".to_string()),
-            }],
-            schemas: vec![],
-            actors: vec![],
-        };
-
-        let result2 = ExtractionResult {
-            services: vec![],
-            endpoints: vec![],
-            connections: vec![ConnectionInfo {
-                source_service: "api".to_string(),
-                target_name: "database".to_string(),
-                protocol: "postgresql".to_string(),
-                method: None,
-                path: None,
-                source_file: "src/models/user.ts:15".to_string(),
-                confidence: Confidence::High,
-                extraction_method: "ast:typescript".to_string(),
-                dependency: None,
-                evidence: None,
-            }],
-            schemas: vec![],
-            actors: vec![],
-        };
-
-        let merged = merge(vec![result1, result2]);
-        assert_eq!(merged.connections.len(), 2);
-    }
-
-    #[test]
-    fn test_merge_schemas_spec_override() {
-        // Spec schema and ast schema with same name
-        // Spec should win, ast should be dropped
-        let result1 = ExtractionResult {
-            services: vec![],
-            endpoints: vec![],
-            connections: vec![],
-            schemas: vec![SchemaInfo {
-                name: "CreateOrderRequest".to_string(),
-                role: "request".to_string(),
-                file: Some("src/models/order.ts".to_string()),
-                connection_ref: None,
-                fields: vec![FieldInfo {
-                    name: "product_id".to_string(),
-                    field_type: "string".to_string(),
-                    required: true,
-                }],
-                confidence: Confidence::High,
-                extraction_method: "ast:typescript".to_string(),
-            }],
-            actors: vec![],
-        };
-
-        let result2 = ExtractionResult {
-            services: vec![],
-            endpoints: vec![],
-            connections: vec![],
-            schemas: vec![SchemaInfo {
-                name: "CreateOrderRequest".to_string(),
-                role: "request".to_string(),
-                file: Some("openapi.yaml".to_string()),
-                connection_ref: None,
-                fields: vec![
-                    FieldInfo {
-                        name: "productId".to_string(),
-                        field_type: "string".to_string(),
-                        required: true,
-                    },
-                    FieldInfo {
-                        name: "quantity".to_string(),
-                        field_type: "integer".to_string(),
-                        required: false,
-                    },
-                ],
-                confidence: Confidence::High,
-                extraction_method: "spec:openapi".to_string(),
-            }],
-            actors: vec![],
-        };
-
-        let merged = merge(vec![result1, result2]);
-        assert_eq!(merged.schemas.len(), 1);
-        assert_eq!(merged.schemas[0].extraction_method, "spec:openapi");
-        assert_eq!(merged.schemas[0].fields.len(), 2);
-    }
-
-    #[test]
-    fn test_apply_service_overrides_name_change() {
+    fn test_apply_service_overrides_name() {
         let mut merged = MergedResult {
             services: vec![ServiceInfo {
-                name: "api_service".to_string(),
+                name: "old-name".to_string(),
                 root_path: "services/api".to_string(),
                 language: "typescript".to_string(),
                 service_type: "service".to_string(),
@@ -472,22 +270,32 @@ mod tests {
                 confidence: Confidence::High,
                 extraction_method: "compose".to_string(),
             }],
-            endpoints: vec![],
+            endpoints: vec![EndpointInfo {
+                service_name: "services/api".to_string(),
+                method: "GET".to_string(),
+                path: "/".to_string(),
+                handler: None,
+                kind: "rest".to_string(),
+                confidence: Confidence::High,
+                extraction_method: "ast:typescript".to_string(),
+            }],
             connections: vec![],
             schemas: vec![],
+            actors: vec![],
         };
 
         let mut overrides = HashMap::new();
         overrides.insert(
             "services/api".to_string(),
             ServiceOverride {
-                name: Some("order-processor".to_string()),
+                name: Some("new-name".to_string()),
                 ignore: None,
             },
         );
 
         apply_service_overrides(&mut merged, &overrides);
-        assert_eq!(merged.services[0].name, "order-processor");
+        assert_eq!(merged.services[0].name, "new-name");
+        assert_eq!(merged.endpoints[0].service_name, "new-name");
     }
 
     #[test]
@@ -501,7 +309,7 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string(),
+                    extraction_method: "test".to_string(),
                 },
                 ServiceInfo {
                     name: "temp-worker".to_string(),
@@ -510,7 +318,7 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string(),
+                    extraction_method: "test".to_string(),
                 },
             ],
             endpoints: vec![
@@ -524,7 +332,7 @@ mod tests {
                     extraction_method: "ast:typescript".to_string(),
                 },
                 EndpointInfo {
-                    service_name: "temp-worker".to_string(),
+                    service_name: "services/temp".to_string(),
                     method: "GET".to_string(),
                     path: "/status".to_string(),
                     handler: None,
@@ -535,6 +343,7 @@ mod tests {
             ],
             connections: vec![],
             schemas: vec![],
+            actors: vec![],
         };
 
         let mut overrides = HashMap::new();

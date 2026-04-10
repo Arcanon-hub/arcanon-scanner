@@ -989,7 +989,12 @@ fn test_py_env_getenv_extracts_default() {
 
 #[test]
 fn test_py_env_environ_extracts_default() {
-    let pattern = make_env_pattern("py-env-environ", "python", "os.environ.get(", vec!["import os"]);
+    let pattern = make_env_pattern(
+        "py-env-environ",
+        "python",
+        "os.environ.get(",
+        vec!["import os"],
+    );
     let registry = PatternRegistry::from_patterns(vec![pattern], "1.0".to_string());
     let file = FileContext {
         path: PathBuf::from("/repo/app.py"),
@@ -1016,7 +1021,10 @@ fn test_ts_env_process_extracts_default() {
     };
     let result = registry.apply_all(&[file], "typescript", &HashMap::new());
     assert!(!result.connections.is_empty());
-    assert_eq!(result.connections[0].target_name, "postgres://localhost/app");
+    assert_eq!(
+        result.connections[0].target_name,
+        "postgres://localhost/app"
+    );
 }
 
 #[test]
@@ -1049,7 +1057,10 @@ fn test_rs_env_var_extracts_default() {
     };
     let result = registry.apply_all(&[file], "rust", &HashMap::new());
     assert!(!result.connections.is_empty());
-    assert_eq!(result.connections[0].target_name, "postgres://localhost/dev");
+    assert_eq!(
+        result.connections[0].target_name,
+        "postgres://localhost/dev"
+    );
 }
 
 #[test]
@@ -1065,7 +1076,10 @@ fn test_rb_env_fetch_extracts_default() {
     };
     let result = registry.apply_all(&[file], "ruby", &HashMap::new());
     assert!(!result.connections.is_empty());
-    assert_eq!(result.connections[0].target_name, "postgres://localhost/app");
+    assert_eq!(
+        result.connections[0].target_name,
+        "postgres://localhost/app"
+    );
 }
 
 #[test]
@@ -1097,7 +1111,10 @@ fn test_java_env_value_annotation_inline() {
     };
     let result = registry.apply_all(&[file], "java", &HashMap::new());
     assert!(!result.connections.is_empty());
-    assert_eq!(result.connections[0].target_name, "jdbc:postgresql://localhost/db");
+    assert_eq!(
+        result.connections[0].target_name,
+        "jdbc:postgresql://localhost/db"
+    );
 }
 
 #[test]
@@ -1131,7 +1148,10 @@ fn test_cs_env_config_emits_hint() {
         ),
     };
     let result = registry.apply_all(&[file], "csharp", &HashMap::new());
-    assert!(!result.connections.is_empty(), "Should fire on IConfiguration match");
+    assert!(
+        !result.connections.is_empty(),
+        "Should fire on IConfiguration match"
+    );
     assert_eq!(
         result.connections[0].target_name, "env:DATABASE_URL",
         "cs-env-config: tier 1 only, must emit env: hint (per DQ-04)"
@@ -1153,9 +1173,14 @@ fn test_env_default_no_default_emits_env_hint() {
     let result = registry.apply_all(&[file], "python", &HashMap::new());
     // The os.getenv line fires on the assignment line itself (contains "os.getenv(")
     // There is no second arg so the result should be env:DATABASE_URL
-    let targets: Vec<&str> = result.connections.iter().map(|c| c.target_name.as_str()).collect();
+    let targets: Vec<&str> = result
+        .connections
+        .iter()
+        .map(|c| c.target_name.as_str())
+        .collect();
     assert!(
         targets.iter().any(|t| *t == "env:DATABASE_URL"),
-        "Must emit env:DATABASE_URL when no default found; got: {:?}", targets
+        "Must emit env:DATABASE_URL when no default found; got: {:?}",
+        targets
     );
 }

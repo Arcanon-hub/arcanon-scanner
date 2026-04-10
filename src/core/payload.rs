@@ -257,6 +257,7 @@ mod tests {
                 boundary_entry: Some("src/main.ts".to_string()),
                 confidence: Confidence::High,
                 extraction_method: "compose".to_string(),
+                ..Default::default()
             }],
             endpoints: vec![
                 EndpointInfo {
@@ -267,6 +268,7 @@ mod tests {
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
                     extraction_method: "ast:typescript".to_string(),
+                    ..Default::default()
                 },
                 EndpointInfo {
                     service_name: "order-service".to_string(),
@@ -276,10 +278,12 @@ mod tests {
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
                     extraction_method: "ast:typescript".to_string(),
+                    ..Default::default()
                 },
             ],
             connections: vec![],
             schemas: vec![],
+            actors: vec![],
         };
 
         let payload = assemble(
@@ -335,8 +339,10 @@ mod tests {
                 extraction_method: "ast:typescript".to_string(),
                 dependency: None,
                 evidence: Some("axios.post(...)".to_string()),
+                ..Default::default()
             }],
             schemas: vec![],
+            actors: vec![],
         };
 
         let payload = assemble(
@@ -386,7 +392,9 @@ mod tests {
                 ],
                 confidence: Confidence::High,
                 extraction_method: "ast:typescript".to_string(),
+                ..Default::default()
             }],
+            actors: vec![],
         };
 
         let payload = assemble(
@@ -425,10 +433,12 @@ mod tests {
                 boundary_entry: None,
                 confidence: Confidence::Medium,
                 extraction_method: "ast:python".to_string(),
+                ..Default::default()
             }],
             endpoints: vec![],
             connections: vec![],
             schemas: vec![],
+            actors: vec![],
         };
 
         let payload = assemble(
@@ -469,11 +479,13 @@ mod tests {
                 service_type: "database".to_string(),
                 boundary_entry: None,
                 confidence: Confidence::High,
-                extraction_method: "ast".to_string(),
+                extraction_method: "test".to_string(),
+                ..Default::default()
             }],
             endpoints: vec![],
             connections: vec![],
             schemas: vec![],
+            actors: vec![],
         };
 
         let payload = assemble(
@@ -507,7 +519,8 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string(),
+                    extraction_method: "test".to_string(),
+                    ..Default::default()
                 },
                 ServiceInfo {
                     name: "worker".to_string(),
@@ -516,7 +529,8 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string(),
+                    extraction_method: "test".to_string(),
+                    ..Default::default()
                 },
             ],
             endpoints: vec![
@@ -528,6 +542,7 @@ mod tests {
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
                     extraction_method: "ast:typescript".to_string(),
+                    ..Default::default()
                 },
                 EndpointInfo {
                     service_name: "worker".to_string(),
@@ -537,10 +552,12 @@ mod tests {
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
                     extraction_method: "ast:python".to_string(),
+                    ..Default::default()
                 },
             ],
             connections: vec![],
             schemas: vec![],
+            actors: vec![],
         };
 
         let payload = assemble(
@@ -596,8 +613,10 @@ mod tests {
                 extraction_method: "pattern:py-redis".to_string(),
                 dependency: Some("py-redis".to_string()),
                 evidence: None,
+                ..Default::default()
             }],
             schemas: vec![],
+            actors: vec![],
         };
         let payload = assemble(
             merged,
@@ -633,8 +652,10 @@ mod tests {
                 extraction_method: "ast:typescript".to_string(),
                 dependency: None,
                 evidence: None,
+                ..Default::default()
             }],
             schemas: vec![],
+            actors: vec![],
         };
         let payload = assemble(
             merged,

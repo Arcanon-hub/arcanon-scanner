@@ -82,6 +82,13 @@ pub async fn upload(payload: &ScanPayloadV1, config: &UploadConfig) -> anyhow::R
                         response.status(),
                         attempt + 1
                     );
+                    if attempt == 3 {
+                        save_payload_to_file(payload)?;
+                        return Err(anyhow!(
+                            "Upload failed after 3 retries (server returned {})",
+                            response.status()
+                        ));
+                    }
                     // Continue to next attempt
                 }
                 // Non-retryable client errors

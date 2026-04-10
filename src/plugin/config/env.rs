@@ -105,6 +105,7 @@ impl LanguagePlugin for EnvPlugin {
                                 extraction_method: "spec:env".to_string(),
                                 dependency: None,
                                 evidence: Some(format!("{}={}", key, val)),
+                                ..Default::default()
                             });
                         }
                     }
@@ -124,6 +125,7 @@ impl LanguagePlugin for EnvPlugin {
                         extraction_method: "spec:env".to_string(),
                         dependency: None,
                         evidence: Some(format!("{}={}", key, val)),
+                        ..Default::default()
                     });
                 }
             }

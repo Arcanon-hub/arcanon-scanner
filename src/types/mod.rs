@@ -4,9 +4,10 @@
 
 /// Confidence level for a finding (service, endpoint, connection, schema).
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Confidence {
     High,
+    #[default]
     Medium,
     Low,
 }
@@ -27,7 +28,7 @@ pub struct ActorInfo {}
 
 /// Service detected in the codebase.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ServiceInfo {
     pub name: String,
     pub root_path: String,
@@ -40,7 +41,7 @@ pub struct ServiceInfo {
 
 /// Endpoint (HTTP route, gRPC service, GraphQL query/mutation, etc.)
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EndpointInfo {
     pub service_name: String,
     pub method: String,
@@ -53,7 +54,7 @@ pub struct EndpointInfo {
 
 /// Connection from one service to another (HTTP call, DB access, message queue, etc.)
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConnectionInfo {
     pub source_service: String,
     pub target_name: String,
@@ -65,11 +66,15 @@ pub struct ConnectionInfo {
     pub extraction_method: String,
     pub dependency: Option<String>,
     pub evidence: Option<String>,
+
+    // ML Refinement Metadata
+    pub ml_confidence: Option<f32>,
+    pub ml_reasoning: Option<String>,
 }
 
 /// Schema definition (request body, response, event payload, etc.)
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SchemaInfo {
     pub name: String,
     pub role: String, // "request", "response", "event"

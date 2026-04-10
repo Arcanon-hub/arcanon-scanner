@@ -56,7 +56,10 @@ impl LanguagePlugin for DockerfilePlugin {
 
         ExtractionResult {
             services,
-            ..Default::default()
+            endpoints: vec![],
+            connections: vec![],
+            schemas: vec![],
+            actors: vec![],
         }
     }
 }

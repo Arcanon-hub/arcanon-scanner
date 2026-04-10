@@ -70,6 +70,25 @@ openapiv3 = "2.2"
 apollo-parser = "0.8"
 protobuf-parse = { version = "3.7", default-features = false }
 
+# ML Refinement (Phase 15)
+# ort is split by platform: on Windows the ONNX Runtime static libs ship with /MD (dynamic CRT),
+# which conflicts with /MT (static CRT) used by tokenizers/esaxx_rs. load-dynamic side-steps the
+# CRT mismatch by dlopening onnxruntime.dll at runtime instead of linking statically.
+# On Linux/macOS there is no CRT concept so static linking works fine.
+# default-features = false drops esaxx_rs (C++ SentencePiece extension).
+# CodeBERT uses BPE which is pure Rust — esaxx_rs is never needed.
+tokenizers = { version = "0.15.2", default-features = false, features = ["onig"] }
+
+# Linux and macOS: pre-built ONNX Runtime binaries available, link statically.
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+ort = { version = "= 2.0.0-rc.9" }
+ort-sys = { version = "= 2.0.0-rc.9" }
+
+# Windows: load-dynamic avoids CRT mismatch (/MD vs /MT from esaxx_rs).
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "= 2.0.0-rc.9", features = ["load-dynamic"] }
+ort-sys = { version = "= 2.0.0-rc.9" }
+
 [dev-dependencies]
 tempfile = "3"
 serial_test = "2"

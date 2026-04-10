@@ -40,6 +40,8 @@ pub struct WrapperInfo {
     pub source: WrapperSource,
     /// Depth in the wrapper chain (D-12: max 5)
     pub depth: usize,
+    /// Seed pattern ID that originated this wrapper (e.g. "py-opcua", "ts-fetch")
+    pub dependency: Option<String>,
 }
 
 /// Where a wrapper function was found.
@@ -330,6 +332,7 @@ fn seed_from_patterns(
                             line: 0,
                         },
                         depth: 0,
+                        dependency: Some(pattern.id.clone()),
                     },
                 );
             }
@@ -696,6 +699,7 @@ fn check_function_and_add_to_wrapper_map(
                     chain: new_chain,
                     source,
                     depth: new_depth,
+                    dependency: callee_info.dependency.clone(),
                 },
             ));
 
@@ -931,8 +935,9 @@ pub fn detect_wrapper_calls(
                     source_file: format!("{}:{}", file.relative_path, line_idx + 1),
                     confidence: Confidence::Medium,
                     extraction_method: format!("wrapper_trace:{wrapper_name}→{terminal}"),
-                    dependency: None,
+                    dependency: info.dependency.clone(),
                     evidence: Some(trimmed.to_string()),
+                    ..Default::default()
                 });
 
                 // Don't break — same line could call multiple wrappers (unusual but possible)
@@ -1038,6 +1043,7 @@ mod tests {
                 line: 3,
             },
             depth: 1,
+            dependency: None,
         };
         map.insert("fetch".to_string(), info);
 
@@ -1056,6 +1062,7 @@ mod tests {
                 line: 3,
             },
             depth: 1,
+            dependency: None,
         };
         map.insert("apiFetch".to_string(), info);
 
@@ -1079,6 +1086,7 @@ mod tests {
                     line: 1,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
         assert_eq!(map.len(), 1);
@@ -1093,6 +1101,7 @@ mod tests {
                     line: 2,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
         assert_eq!(map.len(), 2);
@@ -1156,6 +1165,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1187,6 +1197,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1225,6 +1236,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 2,
+                dependency: None,
             },
         );
 
@@ -1264,6 +1276,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1364,6 +1377,7 @@ mod tests {
                     line: 5,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1403,6 +1417,7 @@ mod tests {
                     line: 5,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1434,6 +1449,7 @@ mod tests {
                     line: 5,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1465,6 +1481,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0, // Seed entry should be skipped by Pass 2
+                dependency: None,
             },
         );
 
@@ -1495,6 +1512,7 @@ mod tests {
                     line: 5,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1530,6 +1548,7 @@ mod tests {
                     line: 5,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
         map.insert(
@@ -1542,6 +1561,7 @@ mod tests {
                     line: 10,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1580,6 +1600,7 @@ mod tests {
                     line: 5,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1616,6 +1637,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1654,6 +1676,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 2,
+                dependency: None,
             },
         );
 
@@ -1685,6 +1708,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1718,6 +1742,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1749,6 +1774,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1780,6 +1806,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1816,6 +1843,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 0,
+                dependency: None,
             },
         );
 
@@ -1887,6 +1915,7 @@ mod tests {
                     line: 5,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
@@ -1920,6 +1949,7 @@ mod tests {
                     line: 0,
                 },
                 depth: 1,
+                dependency: None,
             },
         );
 
