@@ -23,7 +23,6 @@ use std::sync::Mutex;
 use tokenizers::Tokenizer;
 use tracing::{debug, info, warn};
 
-const TOKENIZER_JSON: &[u8] = include_bytes!("../../models/tokenizer.json");
 
 /// Code snippets that represent genuine service connections.
 /// These are the positive anchor class: "this code talks to an external system."
@@ -90,6 +89,23 @@ impl ArcanonML {
             return Self { engine: None };
         }
 
+        let tokenizer_path = resolved_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("tokenizer.json");
+
+        let tokenizer_bytes = match std::fs::read(&tokenizer_path) {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(
+                    "ML Refinement disabled: could not read tokenizer file {}: {}",
+                    tokenizer_path.display(),
+                    e
+                );
+                return Self { engine: None };
+            }
+        };
+
         match std::fs::read(&resolved_path) {
             Err(e) => {
                 warn!(
@@ -99,7 +115,7 @@ impl ArcanonML {
                 );
                 Self { engine: None }
             }
-            Ok(model_bytes) => match CodeBERTRefiner::new_from_bytes(&model_bytes) {
+            Ok(model_bytes) => match CodeBERTRefiner::new_from_bytes(&model_bytes, &tokenizer_bytes) {
                 Ok(engine) => {
                     info!("ML Refinement: CodeBERT engine loaded successfully.");
                     Self {
@@ -146,7 +162,7 @@ pub struct CodeBERTRefiner {
 }
 
 impl CodeBERTRefiner {
-    pub fn new_from_bytes(model_bytes: &[u8]) -> anyhow::Result<Self> {
+    pub fn new_from_bytes(model_bytes: &[u8], tokenizer_bytes: &[u8]) -> anyhow::Result<Self> {
         let session = Mutex::new(
             Session::builder()
                 .map_err(|e| anyhow::anyhow!("Session builder error: {:?}", e))?
@@ -158,7 +174,7 @@ impl CodeBERTRefiner {
                 .map_err(|e| anyhow::anyhow!("Model load error: {:?}", e))?,
         );
 
-        let tokenizer = Tokenizer::from_bytes(TOKENIZER_JSON)
+        let tokenizer = Tokenizer::from_bytes(tokenizer_bytes)
             .map_err(|e| anyhow::anyhow!("Tokenizer error: {}", e))?;
 
         // Precompute anchor centroids once at startup.
