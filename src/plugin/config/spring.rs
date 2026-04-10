@@ -140,6 +140,7 @@ fn emit_connection(
         extraction_method: "spec:spring".to_string(),
         dependency: None,
         evidence: Some(format!("{}={}", key, val)),
+        ..Default::default()
     }
 }
 

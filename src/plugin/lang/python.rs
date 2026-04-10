@@ -202,6 +202,7 @@ fn extract_fastapi_flask_routes(
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
                     extraction_method: "python_fastapi_flask_decorator".to_string(),
+                    ..Default::default()
                 });
             }
         }
@@ -266,6 +267,7 @@ fn extract_django_routes(
                     kind: "rest".to_string(),
                     confidence: Confidence::Medium,
                     extraction_method: "python_django_urlpatterns".to_string(),
+                    ..Default::default()
                 });
             }
         }

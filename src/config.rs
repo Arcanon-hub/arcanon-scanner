@@ -25,6 +25,8 @@ pub struct ScannerConfig {
     pub hub_url: Option<String>,
     /// Default --project-slug.
     pub project_slug: Option<String>,
+    /// Enable ML-based refinement of findings.
+    pub ml_refine: Option<bool>,
     pub exclude: ExcludeConfig,
     pub plugins: PluginsConfig,
     pub patterns: PatternsConfig,

@@ -236,6 +236,7 @@ fn process_method_node(
         kind: "rest".to_string(),
         confidence: Confidence::High,
         extraction_method: "java_spring_boot".to_string(),
+        ..Default::default()
     });
 }
 

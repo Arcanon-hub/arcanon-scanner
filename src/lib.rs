@@ -4,6 +4,7 @@ pub mod core;
 pub mod discovery;
 pub mod git;
 pub mod libres;
+pub mod ml;
 pub mod patterns;
 pub mod plugin;
 pub mod types;

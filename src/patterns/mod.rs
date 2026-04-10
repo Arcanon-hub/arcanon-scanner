@@ -413,6 +413,7 @@ impl PatternRegistry {
                         extraction_method: format!("pattern:{}", pattern.id),
                         dependency: Some(pattern.id.clone()),
                         evidence: Some(line.trim().to_string()),
+                        ..Default::default()
                     });
                 }
             }

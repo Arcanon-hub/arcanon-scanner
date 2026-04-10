@@ -198,6 +198,7 @@ fn extract_method_routes(
                         kind: "rest".to_string(),
                         confidence: Confidence::Medium,
                         extraction_method: "csharp-attribute".to_string(),
+                        ..Default::default()
                     });
                 }
 
@@ -246,6 +247,7 @@ fn extract_method_routes(
                 kind: "rest".to_string(),
                 confidence: Confidence::Medium,
                 extraction_method: "csharp-attribute".to_string(),
+                ..Default::default()
             });
         }
     }
@@ -303,6 +305,7 @@ fn extract_minimal_api_routes(
                                 kind: "rest".to_string(),
                                 confidence: Confidence::High,
                                 extraction_method: "csharp-minimal-api".to_string(),
+                                ..Default::default()
                             });
                         }
                     }

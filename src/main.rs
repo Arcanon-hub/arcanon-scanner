@@ -8,6 +8,7 @@ mod core;
 mod discovery;
 mod git;
 mod libres;
+mod ml;
 mod patterns;
 mod plugin;
 mod types;
@@ -66,6 +67,10 @@ pub struct Cli {
     /// Increase log verbosity (repeatable: -v info, -vv debug, -vvv trace)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8,
+
+    /// Enable ML-based refinement of findings
+    #[arg(long)]
+    pub ml_refine: bool,
 }
 
 /// Initialize tracing: stderr at user-selected level + file at DEBUG always.
@@ -191,6 +196,7 @@ fn main() {
         },
         user_pattern_overrides: file_cfg.user_patterns,
         disabled_patterns: file_cfg.scanner.patterns.disabled,
+        ml_refine: cli.ml_refine || file_cfg.scanner.ml_refine.unwrap_or(false),
     };
 
     // Create tokio runtime for async scanner

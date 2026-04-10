@@ -85,6 +85,7 @@ fn parse_proto(
                         fields: msg.fields,
                         confidence: Confidence::High,
                         extraction_method: "spec:proto".to_string(),
+                        ..Default::default()
                     });
                 }
             }
@@ -117,6 +118,7 @@ fn parse_proto(
                             kind: "grpc".to_string(),
                             confidence: Confidence::High,
                             extraction_method: "spec:proto".to_string(),
+                            ..Default::default()
                         });
                     }
                 }

@@ -116,6 +116,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
         boundary_entry: Some(relative_path.to_string()),
         confidence: Confidence::High,
         extraction_method: "spec:openapi".to_string(),
+        ..Default::default()
     };
 
     // Extract connections from servers
@@ -133,6 +134,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
                 extraction_method: "spec:openapi".to_string(),
                 dependency: None,
                 evidence: Some(format!("servers[].url = {}", server.url)),
+                ..Default::default()
             });
         }
     }
@@ -162,6 +164,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
                         kind: "rest".to_string(),
                         confidence: Confidence::High,
                         extraction_method: "spec:openapi".to_string(),
+                        ..Default::default()
                     });
                 }
             }
@@ -182,6 +185,7 @@ fn parse_openapi_3(content: &str, relative_path: &str) -> ParseResult {
                     fields,
                     confidence: Confidence::High,
                     extraction_method: "spec:openapi".to_string(),
+                    ..Default::default()
                 });
             }
         }
@@ -307,6 +311,7 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
         boundary_entry: Some(relative_path.to_string()),
         confidence: Confidence::High,
         extraction_method: "spec:openapi".to_string(),
+        ..Default::default()
     };
 
     // Extract connection from host field
@@ -326,6 +331,7 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
                 extraction_method: "spec:openapi".to_string(),
                 dependency: None,
                 evidence: Some(format!("host: {}", host)),
+                ..Default::default()
             });
         }
     }
@@ -352,6 +358,7 @@ fn parse_swagger_2(content: &str, relative_path: &str) -> ParseResult {
                         kind: "rest".to_string(),
                         confidence: Confidence::High,
                         extraction_method: "spec:openapi".to_string(),
+                        ..Default::default()
                     });
                 }
             }

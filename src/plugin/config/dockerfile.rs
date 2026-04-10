@@ -50,6 +50,7 @@ impl LanguagePlugin for DockerfilePlugin {
                     boundary_entry: Some(file.relative_path.clone()),
                     confidence: Confidence::High,
                     extraction_method: "dockerfile".to_string(),
+                    ..Default::default()
                 });
             }
         }

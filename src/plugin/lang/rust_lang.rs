@@ -210,6 +210,7 @@ impl LanguagePlugin for RustLangPlugin {
                             kind: "rest".to_string(),
                             confidence: Confidence::High,
                             extraction_method: "ast_actix_macro".to_string(),
+                            ..Default::default()
                         });
                     }
                 }
@@ -251,6 +252,7 @@ impl LanguagePlugin for RustLangPlugin {
                             kind: "rest".to_string(),
                             confidence: Confidence::High,
                             extraction_method: "ast_axum_route".to_string(),
+                            ..Default::default()
                         });
                     }
                 }

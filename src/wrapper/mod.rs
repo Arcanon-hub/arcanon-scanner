@@ -937,6 +937,7 @@ pub fn detect_wrapper_calls(
                     extraction_method: format!("wrapper_trace:{wrapper_name}→{terminal}"),
                     dependency: info.dependency.clone(),
                     evidence: Some(trimmed.to_string()),
+                    ..Default::default()
                 });
 
                 // Don't break — same line could call multiple wrappers (unusual but possible)

@@ -35,7 +35,7 @@ pub fn resolve(mut merged: MergedResult) -> MergedResult {
 
     for conn in &mut merged.connections {
         if let (Some(method), Some(path)) = (&conn.method, &conn.path) {
-            let key = (method.to_uppercase(), normalize_path(path));
+            let key: (String, String) = (method.to_uppercase(), normalize_path(path));
             if let Some(target_svc) = endpoint_lookup.get(&key) {
                 conn.target_name = target_svc.clone();
             }
@@ -100,6 +100,7 @@ mod tests {
                 boundary_entry: Some("src/main.ts".to_string()),
                 confidence: Confidence::High,
                 extraction_method: "compose".to_string(),
+                ..Default::default()
             }],
             endpoints: vec![EndpointInfo {
                 service_name: "payment-service".to_string(),
@@ -109,6 +110,7 @@ mod tests {
                 kind: "rest".to_string(),
                 confidence: Confidence::High,
                 extraction_method: "ast:typescript".to_string(),
+                ..Default::default()
             }],
             connections: vec![ConnectionInfo {
                 source_service: "order-service".to_string(),
@@ -121,8 +123,10 @@ mod tests {
                 extraction_method: "ast:typescript".to_string(),
                 dependency: None,
                 evidence: Some("axios.post(...)".to_string()),
+                ..Default::default()
             }],
             schemas: vec![],
+            actors: vec![],
         };
 
         let resolved = resolve(merged);
@@ -141,6 +145,7 @@ mod tests {
                 boundary_entry: None,
                 confidence: Confidence::High,
                 extraction_method: "compose".to_string(),
+                ..Default::default()
             }],
             endpoints: vec![EndpointInfo {
                 service_name: "api".to_string(),
@@ -150,6 +155,7 @@ mod tests {
                 kind: "rest".to_string(),
                 confidence: Confidence::High,
                 extraction_method: "ast:typescript".to_string(),
+                ..Default::default()
             }],
             connections: vec![ConnectionInfo {
                 source_service: "api".to_string(),
@@ -162,8 +168,10 @@ mod tests {
                 extraction_method: "ast:typescript".to_string(),
                 dependency: None,
                 evidence: None,
+                ..Default::default()
             }],
             schemas: vec![],
+            actors: vec![],
         };
 
         let resolved = resolve(merged);
@@ -182,6 +190,7 @@ mod tests {
                 boundary_entry: None,
                 confidence: Confidence::High,
                 extraction_method: "compose".to_string(),
+                ..Default::default()
             }],
             endpoints: vec![EndpointInfo {
                 service_name: "user-service".to_string(),
@@ -191,6 +200,7 @@ mod tests {
                 kind: "rest".to_string(),
                 confidence: Confidence::High,
                 extraction_method: "ast:go".to_string(),
+                ..Default::default()
             }],
             connections: vec![ConnectionInfo {
                 source_service: "order-service".to_string(),
@@ -203,8 +213,10 @@ mod tests {
                 extraction_method: "ast:go".to_string(),
                 dependency: None,
                 evidence: None,
+                ..Default::default()
             }],
             schemas: vec![],
+            actors: vec![],
         };
 
         let resolved = resolve(merged);
@@ -223,6 +235,7 @@ mod tests {
                 kind: "database".to_string(),
                 confidence: Confidence::High,
                 extraction_method: "ast:typescript".to_string(),
+                ..Default::default()
             }],
             connections: vec![ConnectionInfo {
                 source_service: "api".to_string(),
@@ -235,8 +248,10 @@ mod tests {
                 extraction_method: "ast:typescript".to_string(),
                 dependency: None,
                 evidence: None,
+                ..Default::default()
             }],
             schemas: vec![],
+            actors: vec![],
         };
 
         let resolved = resolve(merged);

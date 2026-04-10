@@ -107,6 +107,7 @@ impl LanguagePlugin for ComposePlugin {
                     boundary_entry: None,
                     confidence: Confidence::High,
                     extraction_method: "compose".to_string(),
+                    ..Default::default()
                 });
             }
 
@@ -124,6 +125,7 @@ impl LanguagePlugin for ComposePlugin {
                         extraction_method: "compose".to_string(),
                         dependency: None,
                         evidence: Some(format!("{} depends_on {}", service_name, dep_name)),
+                        ..Default::default()
                     });
                 }
             }
@@ -167,6 +169,7 @@ impl LanguagePlugin for ComposePlugin {
                             extraction_method: "compose".to_string(),
                             dependency: None,
                             evidence: Some(format!("{}={}", key, val)),
+                            ..Default::default()
                         });
                     }
                 }
