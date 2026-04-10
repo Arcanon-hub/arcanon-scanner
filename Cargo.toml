@@ -75,7 +75,10 @@ protobuf-parse = { version = "3.7", default-features = false }
 # which conflicts with /MT (static CRT) used by tokenizers/esaxx_rs. load-dynamic side-steps the
 # CRT mismatch by dlopening onnxruntime.dll at runtime instead of linking statically.
 # On Linux/macOS there is no CRT concept so static linking works fine.
-tokenizers = "0.15.2"
+# default-features = false drops esaxx_rs (C++ SentencePiece extension).
+# CodeBERT uses BPE which is pure Rust — esaxx_rs is never needed.
+# Without this, musl static builds fail: no x86_64-linux-musl-g++ available in CI.
+tokenizers = { version = "0.15.2", default-features = false, features = ["onig"] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 ort = { version = "= 2.0.0-rc.9" }
