@@ -111,7 +111,10 @@ pub fn infer_service_if_needed(merged: &mut MergedResult, repo_name: &str) {
             || !merged.schemas.is_empty()
             || !merged.endpoints.is_empty())
     {
-        debug!("No services detected, inferring service '{}' at root", repo_name);
+        debug!(
+            "No services detected, inferring service '{}' at root",
+            repo_name
+        );
         merged.services.push(crate::types::ServiceInfo {
             name: repo_name.to_string(),
             root_path: ".".to_string(),
@@ -119,13 +122,16 @@ pub fn infer_service_if_needed(merged: &mut MergedResult, repo_name: &str) {
             service_type: "service".to_string(),
             boundary_entry: None,
             confidence: crate::types::Confidence::High,
-            extraction_method: "inferred_root".to_string()
+            extraction_method: "inferred_root".to_string(),
         });
     }
 }
 
 /// Apply user-defined service name/ignore overrides to the merged result.
-pub fn apply_service_overrides(merged: &mut MergedResult, overrides: &HashMap<String, ServiceOverride>) {
+pub fn apply_service_overrides(
+    merged: &mut MergedResult,
+    overrides: &HashMap<String, ServiceOverride>,
+) {
     // 1. Filter out ignored services
     let ignored_roots: Vec<String> = overrides
         .iter()
@@ -135,9 +141,15 @@ pub fn apply_service_overrides(merged: &mut MergedResult, overrides: &HashMap<St
 
     if !ignored_roots.is_empty() {
         debug!("Applying ignore overrides for: {:?}", ignored_roots);
-        merged.services.retain(|s| !ignored_roots.contains(&s.root_path));
-        merged.endpoints.retain(|e| !ignored_roots.contains(&e.service_name));
-        merged.connections.retain(|c| !ignored_roots.contains(&c.source_service));
+        merged
+            .services
+            .retain(|s| !ignored_roots.contains(&s.root_path));
+        merged
+            .endpoints
+            .retain(|e| !ignored_roots.contains(&e.service_name));
+        merged
+            .connections
+            .retain(|c| !ignored_roots.contains(&c.source_service));
     }
 
     // 2. Apply name overrides
@@ -181,7 +193,7 @@ mod tests {
                 service_type: "service".to_string(),
                 boundary_entry: Some("src/main.ts".to_string()),
                 confidence: Confidence::High,
-                extraction_method: "dockerfile".to_string()
+                extraction_method: "dockerfile".to_string(),
             }],
             endpoints: vec![],
             connections: vec![],
@@ -197,7 +209,7 @@ mod tests {
                 service_type: "service".to_string(),
                 boundary_entry: None,
                 confidence: Confidence::High,
-                extraction_method: "compose".to_string()
+                extraction_method: "compose".to_string(),
             }],
             endpoints: vec![],
             connections: vec![],
@@ -224,7 +236,7 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "test".to_string()
+                    extraction_method: "test".to_string(),
                 },
                 ServiceInfo {
                     name: "worker".to_string(),
@@ -233,8 +245,8 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "test".to_string()
-                }
+                    extraction_method: "test".to_string(),
+                },
             ],
             endpoints: vec![],
             connections: vec![],
@@ -256,7 +268,7 @@ mod tests {
                 service_type: "service".to_string(),
                 boundary_entry: None,
                 confidence: Confidence::High,
-                extraction_method: "compose".to_string()
+                extraction_method: "compose".to_string(),
             }],
             endpoints: vec![EndpointInfo {
                 service_name: "services/api".to_string(),
@@ -265,7 +277,7 @@ mod tests {
                 handler: None,
                 kind: "rest".to_string(),
                 confidence: Confidence::High,
-                extraction_method: "ast:typescript".to_string()
+                extraction_method: "ast:typescript".to_string(),
             }],
             connections: vec![],
             schemas: vec![],
@@ -297,7 +309,7 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "test".to_string()
+                    extraction_method: "test".to_string(),
                 },
                 ServiceInfo {
                     name: "temp-worker".to_string(),
@@ -306,8 +318,8 @@ mod tests {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "test".to_string()
-                }
+                    extraction_method: "test".to_string(),
+                },
             ],
             endpoints: vec![
                 EndpointInfo {
@@ -317,7 +329,7 @@ mod tests {
                     handler: None,
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
-                    extraction_method: "ast:typescript".to_string()
+                    extraction_method: "ast:typescript".to_string(),
                 },
                 EndpointInfo {
                     service_name: "services/temp".to_string(),
@@ -326,7 +338,7 @@ mod tests {
                     handler: None,
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
-                    extraction_method: "ast:python".to_string()
+                    extraction_method: "ast:python".to_string(),
                 },
             ],
             connections: vec![],

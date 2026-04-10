@@ -23,7 +23,6 @@ use std::sync::Mutex;
 use tokenizers::Tokenizer;
 use tracing::{debug, info, warn};
 
-
 /// Code snippets that represent genuine service connections.
 /// These are the positive anchor class: "this code talks to an external system."
 const SERVICE_ANCHORS: &[&str] = &[
@@ -76,7 +75,9 @@ impl ArcanonML {
             Some(p) => p.to_path_buf(),
             None => {
                 let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-                home.join(".arcanon").join("models").join("codebert-v1.onnx")
+                home.join(".arcanon")
+                    .join("models")
+                    .join("codebert-v1.onnx")
             }
         };
 
@@ -115,32 +116,34 @@ impl ArcanonML {
                 );
                 Self { engine: None }
             }
-            Ok(model_bytes) => match CodeBERTRefiner::new_from_bytes(&model_bytes, &tokenizer_bytes) {
-                Ok(engine) => {
-                    info!("ML Refinement: CodeBERT engine loaded successfully.");
-                    Self {
-                        engine: Some(Box::new(engine)),
+            Ok(model_bytes) => {
+                match CodeBERTRefiner::new_from_bytes(&model_bytes, &tokenizer_bytes) {
+                    Ok(engine) => {
+                        info!("ML Refinement: CodeBERT engine loaded successfully.");
+                        Self {
+                            engine: Some(Box::new(engine)),
+                        }
                     }
-                }
-                Err(e) => {
-                    // Distinguish model-file corruption from missing ONNX Runtime library.
-                    let reason = if e.to_string().contains("libonnxruntime")
-                        || e.to_string().contains("onnxruntime.dll")
-                        || e.to_string().contains("OrtGetApiBase")
-                    {
-                        format!(
+                    Err(e) => {
+                        // Distinguish model-file corruption from missing ONNX Runtime library.
+                        let reason = if e.to_string().contains("libonnxruntime")
+                            || e.to_string().contains("onnxruntime.dll")
+                            || e.to_string().contains("OrtGetApiBase")
+                        {
+                            format!(
                             "ONNX Runtime library not found (libonnxruntime.so / onnxruntime.dll). \
                              Install it from https://github.com/microsoft/onnxruntime/releases. \
                              Error: {}",
                             e
                         )
-                    } else {
-                        format!("model file may be corrupt or incompatible. Error: {}", e)
-                    };
-                    warn!("ML Refinement disabled: {}", reason);
-                    Self { engine: None }
+                        } else {
+                            format!("model file may be corrupt or incompatible. Error: {}", e)
+                        };
+                        warn!("ML Refinement disabled: {}", reason);
+                        Self { engine: None }
+                    }
                 }
-            },
+            }
         }
     }
 
@@ -197,7 +200,11 @@ impl CodeBERTRefiner {
     }
 
     /// Get the [CLS] token embedding (768-dim) for a text snippet.
-    fn embed(session: &Mutex<Session>, tokenizer: &Tokenizer, text: &str) -> anyhow::Result<Vec<f32>> {
+    fn embed(
+        session: &Mutex<Session>,
+        tokenizer: &Tokenizer,
+        text: &str,
+    ) -> anyhow::Result<Vec<f32>> {
         let encoding = tokenizer
             .encode(text, true)
             .map_err(|e| anyhow::anyhow!("Encoding error: {}", e))?;
@@ -222,10 +229,13 @@ impl CodeBERTRefiner {
             .map_err(|e| anyhow::anyhow!("Session lock poisoned: {}", e))?;
 
         let outputs = sess
-            .run(ort::inputs![
-                "input_ids" => input_ids_val,
-                "attention_mask" => attn_mask_val,
-            ].map_err(|e| anyhow::anyhow!("Inputs build error: {:?}", e))?)
+            .run(
+                ort::inputs![
+                    "input_ids" => input_ids_val,
+                    "attention_mask" => attn_mask_val,
+                ]
+                .map_err(|e| anyhow::anyhow!("Inputs build error: {:?}", e))?,
+            )
             .map_err(|e| anyhow::anyhow!("Inference run error: {:?}", e))?;
 
         let output_tensor = outputs[0]
@@ -311,10 +321,8 @@ impl MLRefiner for CodeBERTRefiner {
 
             match Self::embed(&self.session, &self.tokenizer, &input) {
                 Ok(emb) => {
-                    let sim_service =
-                        Self::cosine_similarity(&emb, &self.service_centroid);
-                    let sim_noise =
-                        Self::cosine_similarity(&emb, &self.noise_centroid);
+                    let sim_service = Self::cosine_similarity(&emb, &self.service_centroid);
+                    let sim_noise = Self::cosine_similarity(&emb, &self.noise_centroid);
 
                     // Normalize: what fraction of total similarity is the service pole?
                     let total = sim_service + sim_noise;
@@ -351,10 +359,7 @@ impl MLRefiner for CodeBERTRefiner {
                     );
                 }
                 Err(e) => {
-                    warn!(
-                        "ML embedding failed for {}: {}",
-                        conn.source_file, e
-                    );
+                    warn!("ML embedding failed for {}: {}", conn.source_file, e);
                     conn.ml_confidence = Some(0.5);
                     conn.ml_reasoning = Some(format!("embedding_error:{}", e));
                 }
@@ -395,7 +400,11 @@ mod tests {
         let sim_noise = 0.2f32;
         let total = sim_service + sim_noise;
         let ml_score = (sim_service / total).clamp(0.0, 1.0);
-        assert!(ml_score >= 0.68, "expected High confidence threshold, got {}", ml_score);
+        assert!(
+            ml_score >= 0.68,
+            "expected High confidence threshold, got {}",
+            ml_score
+        );
     }
 
     #[test]

@@ -1,8 +1,8 @@
 //! Kubernetes manifest extraction plugin.
 //! Extracts service names from Deployments/Services and connections from container environment variables.
 
+use crate::plugin::{ExtractionContext, LanguagePlugin};
 use crate::types::{Confidence, ConnectionInfo, ExtractionResult, ServiceInfo};
-use crate::plugin::{LanguagePlugin, ExtractionContext};
 use serde::Deserialize;
 use tracing::warn;
 
@@ -101,7 +101,7 @@ impl LanguagePlugin for KubernetesPlugin {
                                             service_type: "service".to_string(),
                                             boundary_entry: None,
                                             confidence: Confidence::High,
-                                            extraction_method: "kubernetes".to_string()
+                                            extraction_method: "kubernetes".to_string(),
                                         });
 
                                         // Extract connections from containers[].env
@@ -111,7 +111,8 @@ impl LanguagePlugin for KubernetesPlugin {
                                                     for container in pod_spec.containers {
                                                         for env_var in container.env {
                                                             if let Some(val) = env_var.value {
-                                                                if is_connection_key(&env_var.name) {
+                                                                if is_connection_key(&env_var.name)
+                                                                {
                                                                     let (protocol, hostname) = if let Some(parsed) = parse_url_value(&val) {
                                                                         parsed
                                                                     } else if looks_like_hostname(&val) {
@@ -121,20 +122,35 @@ impl LanguagePlugin for KubernetesPlugin {
                                                                     } else {
                                                                         continue;
                                                                     };
-                                                                    result.connections.push(ConnectionInfo {
-                                                                        source_service: name.clone(),
-                                                                        target_name: hostname,
-                                                                        protocol,
-                                                                        method: None,
-                                                                        path: None,
-                                                                        source_file: format!("{}:0", file.relative_path),
-                                                                        confidence: Confidence::High,
-                                                                        extraction_method: "kubernetes".to_string(),
-                                                                        dependency: None,
-                                                                        evidence: Some(format!("{}={}", env_var.name, val)),
-                                                                        ml_confidence: None,
-                                                                        ml_reasoning: None,
-                                                                    });
+                                                                    result.connections.push(
+                                                                        ConnectionInfo {
+                                                                            source_service: name
+                                                                                .clone(),
+                                                                            target_name: hostname,
+                                                                            protocol,
+                                                                            method: None,
+                                                                            path: None,
+                                                                            source_file: format!(
+                                                                                "{}:0",
+                                                                                file.relative_path
+                                                                            ),
+                                                                            confidence:
+                                                                                Confidence::High,
+                                                                            extraction_method:
+                                                                                "kubernetes"
+                                                                                    .to_string(),
+                                                                            dependency: None,
+                                                                            evidence: Some(
+                                                                                format!(
+                                                                                    "{}={}",
+                                                                                    env_var.name,
+                                                                                    val
+                                                                                ),
+                                                                            ),
+                                                                            ml_confidence: None,
+                                                                            ml_reasoning: None,
+                                                                        },
+                                                                    );
                                                                 }
                                                             }
                                                         }
@@ -166,7 +182,7 @@ impl LanguagePlugin for KubernetesPlugin {
                                             service_type: "service".to_string(),
                                             boundary_entry: None,
                                             confidence: Confidence::High,
-                                            extraction_method: "kubernetes".to_string()
+                                            extraction_method: "kubernetes".to_string(),
                                         });
                                         // no container env traversal for Service kind
                                     }
@@ -181,7 +197,10 @@ impl LanguagePlugin for KubernetesPlugin {
                         }
                     }
                     Err(e) => {
-                        warn!("kubernetes: failed to parse document in {}: {}", file.relative_path, e);
+                        warn!(
+                            "kubernetes: failed to parse document in {}: {}",
+                            file.relative_path, e
+                        );
                     }
                 }
             }
@@ -194,7 +213,11 @@ impl LanguagePlugin for KubernetesPlugin {
 /// Basic heuristic for environment variables that might contain service connection URLs.
 fn is_connection_key(name: &str) -> bool {
     let n = name.to_uppercase();
-    n.contains("URL") || n.contains("HOST") || n.contains("ENDPOINT") || n.contains("BROKER") || n.contains("ADDRESS")
+    n.contains("URL")
+        || n.contains("HOST")
+        || n.contains("ENDPOINT")
+        || n.contains("BROKER")
+        || n.contains("ADDRESS")
 }
 
 /// Simple URL parser for environment variable values.
@@ -217,10 +240,7 @@ fn parse_url_value(val: &str) -> Option<(String, String)> {
 /// Returns true if `val` looks like a plain hostname (e.g. "redis.cache", "db.internal").
 /// Must contain a dot and no spaces. Does NOT match bare words like "localhost".
 fn looks_like_hostname(val: &str) -> bool {
-    !val.is_empty()
-        && !val.contains(' ')
-        && val.contains('.')
-        && !val.contains("://")
+    !val.is_empty() && !val.contains(' ') && val.contains('.') && !val.contains("://")
 }
 
 /// Infer a protocol string from the environment variable key name.
@@ -244,10 +264,10 @@ fn infer_protocol_from_key(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use std::sync::Arc;
     use crate::plugin::FileContext;
     use crate::vars::VariableStore;
+    use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_kubernetes_deployment_extraction() {
@@ -291,9 +311,16 @@ spec:
 
         // Should find 2 connections (DB and Redis)
         assert_eq!(result.connections.len(), 2);
-        let protocols: std::collections::HashSet<_> = result.connections.iter().map(|c| c.protocol.as_str()).collect();
+        let protocols: std::collections::HashSet<_> = result
+            .connections
+            .iter()
+            .map(|c| c.protocol.as_str())
+            .collect();
         assert!(protocols.contains("postgres"));
-        assert!(result.connections.iter().any(|c| c.target_name == "redis.cache"));
+        assert!(result
+            .connections
+            .iter()
+            .any(|c| c.target_name == "redis.cache"));
     }
 
     #[test]
@@ -341,8 +368,14 @@ spec:
 
     #[test]
     fn test_parse_url_value() {
-        assert_eq!(parse_url_value("postgres://db:5432"), Some(("postgres".to_string(), "db".to_string())));
-        assert_eq!(parse_url_value("http://api.internal/v1"), Some(("http".to_string(), "api.internal".to_string())));
+        assert_eq!(
+            parse_url_value("postgres://db:5432"),
+            Some(("postgres".to_string(), "db".to_string()))
+        );
+        assert_eq!(
+            parse_url_value("http://api.internal/v1"),
+            Some(("http".to_string(), "api.internal".to_string()))
+        );
         assert_eq!(parse_url_value("not-a-url"), None);
     }
 }

@@ -121,7 +121,7 @@ fn expand_resources(resource_name: &str, confidence: Confidence) -> Vec<Endpoint
                 handler: None,
                 kind: "rest".to_string(),
                 confidence: confidence.clone(),
-                extraction_method: "ast_rails_resources".to_string()
+                extraction_method: "ast_rails_resources".to_string(),
             }
         })
         .collect()
@@ -143,7 +143,7 @@ fn expand_resource(resource_name: &str, confidence: Confidence) -> Vec<EndpointI
                 handler: None,
                 kind: "rest".to_string(),
                 confidence: confidence.clone(),
-                extraction_method: "ast_rails_resource".to_string()
+                extraction_method: "ast_rails_resource".to_string(),
             }
         })
         .collect()
@@ -238,7 +238,7 @@ impl LanguagePlugin for RubyPlugin {
                             handler: None,
                             kind: "rest".to_string(),
                             confidence: Confidence::High,
-                            extraction_method: "ast_rails_route".to_string()
+                            extraction_method: "ast_rails_route".to_string(),
                         });
                     }
                 }

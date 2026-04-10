@@ -531,7 +531,7 @@ mod tests {
                     confidence: Confidence::High,
                     extraction_method: "test".to_string(),
                     ..Default::default()
-                }
+                },
             ],
             endpoints: vec![
                 EndpointInfo {

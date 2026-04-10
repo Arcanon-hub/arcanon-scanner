@@ -197,7 +197,7 @@ fn extract_method_routes(
                         handler: Some(current_action_name.clone()),
                         kind: "rest".to_string(),
                         confidence: Confidence::Medium,
-                        extraction_method: "csharp-attribute".to_string()
+                        extraction_method: "csharp-attribute".to_string(),
                     });
                 }
 
@@ -245,7 +245,7 @@ fn extract_method_routes(
                 handler: Some(current_action_name.clone()),
                 kind: "rest".to_string(),
                 confidence: Confidence::Medium,
-                extraction_method: "csharp-attribute".to_string()
+                extraction_method: "csharp-attribute".to_string(),
             });
         }
     }
@@ -302,7 +302,7 @@ fn extract_minimal_api_routes(
                                 handler: None, // Lambda or delegate; not easily extractable
                                 kind: "rest".to_string(),
                                 confidence: Confidence::High,
-                                extraction_method: "csharp-minimal-api".to_string()
+                                extraction_method: "csharp-minimal-api".to_string(),
                             });
                         }
                     }

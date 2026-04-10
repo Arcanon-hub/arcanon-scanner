@@ -111,9 +111,8 @@ fn parse_asyncapi(content: &str, relative_path: &str) -> Result<Vec<EndpointInfo
                     handler: publish_op.operation_id.clone(),
                     kind: "asyncapi".to_string(),
                     confidence: Confidence::High,
-                    extraction_method: "spec:asyncapi".to_string()
-                    });
-
+                    extraction_method: "spec:asyncapi".to_string(),
+                });
             }
 
             // Process subscribe operation
@@ -125,9 +124,8 @@ fn parse_asyncapi(content: &str, relative_path: &str) -> Result<Vec<EndpointInfo
                     handler: subscribe_op.operation_id.clone(),
                     kind: "asyncapi".to_string(),
                     confidence: Confidence::High,
-                    extraction_method: "spec:asyncapi".to_string()
-                    });
-
+                    extraction_method: "spec:asyncapi".to_string(),
+                });
             }
         }
     }

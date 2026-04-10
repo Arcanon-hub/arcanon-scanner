@@ -84,7 +84,7 @@ fn parse_proto(
                         connection_ref: None,
                         fields: msg.fields,
                         confidence: Confidence::High,
-                        extraction_method: "spec:proto".to_string()
+                        extraction_method: "spec:proto".to_string(),
                     });
                 }
             }
@@ -116,7 +116,7 @@ fn parse_proto(
                             handler: Some(method_name),
                             kind: "grpc".to_string(),
                             confidence: Confidence::High,
-                            extraction_method: "spec:proto".to_string()
+                            extraction_method: "spec:proto".to_string(),
                         });
                     }
                 }

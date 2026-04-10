@@ -49,7 +49,7 @@ impl LanguagePlugin for DockerfilePlugin {
                     service_type: "service".to_string(),
                     boundary_entry: Some(file.relative_path.clone()),
                     confidence: Confidence::High,
-                    extraction_method: "dockerfile".to_string()
+                    extraction_method: "dockerfile".to_string(),
                 });
             }
         }

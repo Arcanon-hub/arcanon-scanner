@@ -106,7 +106,7 @@ impl LanguagePlugin for ComposePlugin {
                     service_type: "service".to_string(),
                     boundary_entry: None,
                     confidence: Confidence::High,
-                    extraction_method: "compose".to_string()
+                    extraction_method: "compose".to_string(),
                 });
             }
 
