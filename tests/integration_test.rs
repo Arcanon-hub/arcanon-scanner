@@ -12,8 +12,7 @@ fn test_polyglot_fixture_end_to_end() {
     let config = arcanon::core::scanner::ScannerConfig {
         root: fixture_root,
         dry_run: true,
-        hub_url: "https://hub.example.com".to_string(),
-        api_key: "test-key".to_string(),
+        hub_url: Some("https://hub.example.com".to_string()),
         project_slug: "test".to_string(),
         output: None,
         plugin_filter: None,

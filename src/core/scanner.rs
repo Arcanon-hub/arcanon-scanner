@@ -31,10 +31,9 @@ pub struct ScannerConfig {
     pub dry_run: bool,
     /// Write payload to this file instead of uploading
     pub output: Option<PathBuf>,
-    /// Hub URL for upload (or stub if --dry-run)
-    pub hub_url: String,
-    /// API key for upload (or stub if --dry-run)
-    pub api_key: String,
+    /// Hub base URL — passed to PatternRegistry for remote pattern fetching (future).
+    /// Sourced from ~/.arcanon/config.json or --hub-url flag.
+    pub hub_url: Option<String>,
     /// Project slug identifier
     pub project_slug: String,
     /// Plugin filter (comma-separated names to include; None = include all)
@@ -107,7 +106,7 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     debug!("variable store built");
 
     // Step 3b: Load pattern registry (PTRN-01, PTRN-02, PTRN-03)
-    let pattern_registry = PatternRegistry::load(Some(&config.hub_url)).await;
+    let pattern_registry = PatternRegistry::load(config.hub_url.as_deref()).await;
 
     // Apply user overrides (D-11: override by ID) and disabled filter (D-12)
     let pattern_registry = pattern_registry

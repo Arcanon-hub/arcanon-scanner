@@ -24,11 +24,15 @@ pub struct Cli {
     #[arg(default_value = ".")]
     pub path: PathBuf,
 
-    /// Hub API endpoint
+    /// Upload scan results to Arcanon Hub
+    #[arg(long)]
+    pub upload: bool,
+
+    /// Hub API base URL (overrides ~/.arcanon/config.json and ARCANON_HUB_URL)
     #[arg(long, env = "ARCANON_HUB_URL")]
     pub hub_url: Option<String>,
 
-    /// API key for upload
+    /// API key for upload (overrides ARCANON_API_KEY env var)
     #[arg(long, env = "ARCANON_API_KEY")]
     pub api_key: Option<String>,
 
@@ -36,11 +40,11 @@ pub struct Cli {
     #[arg(long, env = "ARCANON_PROJECT_SLUG")]
     pub project_slug: Option<String>,
 
-    /// Write payload JSON to file instead of uploading
+    /// Write payload JSON to file instead of default output
     #[arg(long)]
     pub output: Option<PathBuf>,
 
-    /// Parse and print payload, don't upload
+    /// Parse and print payload to stdout, don't write or upload
     #[arg(long)]
     pub dry_run: bool,
 
@@ -140,16 +144,38 @@ fn main() {
     // Initialize logging
     init_tracing(cli.verbose, &cli.path);
 
-    // Load config file (.arcanon.toml)
+    // Load project config (.arcanon.toml in repo root)
     let file_cfg = config::load_file_config(&cli.path);
 
-    // Apply precedence: CLI flag > env var > .arcanon.toml > default
-    let hub_url = cli
-        .hub_url
-        .or(file_cfg.scanner.hub_url)
-        .unwrap_or_else(|| "https://hub.arcanon.dev".to_string());
-    let api_key =
-        std::env::var("ARCANON_API_KEY").unwrap_or_else(|_| "placeholder-key".to_string());
+    // Load global user config (~/.arcanon/config.json)
+    let global_cfg = config::load_global_config();
+
+    // Resolve hub_url: --hub-url flag / ARCANON_HUB_URL env > ~/.arcanon/config.json
+    // (clap already merged the env var into cli.hub_url via `env = "ARCANON_HUB_URL"`)
+    let hub_url = cli.hub_url.or(global_cfg.hub_url);
+
+    // Resolve api_key: --api-key flag / ARCANON_API_KEY env
+    // (clap already merged the env var into cli.api_key via `env = "ARCANON_API_KEY"`)
+    let api_key = cli.api_key;
+
+    // Validate upload prerequisites before doing any work
+    if cli.upload {
+        if hub_url.is_none() {
+            eprintln!(
+                "Error: --upload requires a hub URL.\n\
+                 Set it via --hub-url, ARCANON_HUB_URL env var, or hub_url in ~/.arcanon/config.json"
+            );
+            std::process::exit(1);
+        }
+        if api_key.is_none() {
+            eprintln!(
+                "Error: --upload requires an API key.\n\
+                 Set it via --api-key or ARCANON_API_KEY env var"
+            );
+            std::process::exit(1);
+        }
+    }
+
     let project_slug = cli
         .project_slug
         .or(file_cfg.scanner.project_slug)
@@ -158,21 +184,14 @@ fn main() {
     let mut exclude = cli.exclude.clone();
     exclude.extend(file_cfg.scanner.exclude.paths.unwrap_or_default());
 
-    // Log startup
     info!("arcanon starting, scanning: {}", cli.path.display());
-
-    // Log output destination if specified
-    if let Some(ref p) = cli.output {
-        info!("Output will be written to: {}", p.display());
-    }
 
     // Build scanner config
     let scanner_config = core::scanner::ScannerConfig {
         root: cli.path.clone(),
         dry_run: cli.dry_run,
         output: cli.output.clone(),
-        hub_url,
-        api_key,
+        hub_url: hub_url.clone(),
         project_slug,
         plugin_filter: cli.plugins.clone(),
         exclude_patterns: exclude,
@@ -209,64 +228,79 @@ fn main() {
     };
 
     // Run the scanner
-    match rt.block_on(core::scanner::run(&scanner_config)) {
-        Ok(payload) => {
-            if scanner_config.dry_run {
-                // --dry-run: print payload to stdout and exit 0
-                match serde_json::to_string_pretty(&payload) {
-                    Ok(json) => {
-                        println!("{}", json);
-                        std::process::exit(0);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to serialize payload: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-
-            if let Some(output_path) = &scanner_config.output {
-                // --output <FILE>: write to file and exit 0
-                match serde_json::to_string_pretty(&payload) {
-                    Ok(json) => match std::fs::write(output_path, json) {
-                        Ok(_) => {
-                            info!("Payload written to {}", output_path.display());
-                            std::process::exit(0);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to write output file: {}", e);
-                            std::process::exit(1);
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("Failed to serialize payload: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-
-            // Default: upload to hub using the same runtime
-            let upload_config = upload::UploadConfig {
-                hub_url: scanner_config.hub_url.clone(),
-                api_key: scanner_config.api_key.clone(),
-            };
-
-            match rt.block_on(upload::upload(&payload, &upload_config)) {
-                Ok(()) => {
-                    info!("Scan complete");
-                    std::process::exit(0);
-                }
-                Err(e) => {
-                    eprintln!("Upload failed: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
+    let payload = match rt.block_on(core::scanner::run(&scanner_config)) {
+        Ok(p) => p,
         Err(e) => {
             eprintln!("Scan failed: {}", e);
             std::process::exit(1);
         }
+    };
+
+    // --dry-run: print JSON to stdout and exit
+    if scanner_config.dry_run {
+        match serde_json::to_string_pretty(&payload) {
+            Ok(json) => {
+                println!("{}", json);
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Failed to serialize payload: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
+
+    // Serialize payload once for file writing paths
+    let json = match serde_json::to_string_pretty(&payload) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("Failed to serialize payload: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // --output <FILE>: write to specified path
+    if let Some(output_path) = &scanner_config.output {
+        match std::fs::write(output_path, &json) {
+            Ok(_) => info!("Payload written to {}", output_path.display()),
+            Err(e) => {
+                eprintln!("Failed to write output file: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else if !cli.upload {
+        // Default: write {reponame}.json in repo root
+        let resolved_root = cli.path.canonicalize().unwrap_or_else(|_| cli.path.clone());
+        let repo_name = resolved_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("arcanon-scan");
+        let output_path = cli.path.join(format!("{}.json", repo_name));
+        match std::fs::write(&output_path, &json) {
+            Ok(_) => info!("Payload written to {}", output_path.display()),
+            Err(e) => {
+                eprintln!("Failed to write {}: {}", output_path.display(), e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // --upload: POST to hub
+    if cli.upload {
+        let upload_config = upload::UploadConfig {
+            hub_url: hub_url.unwrap(), // validated above
+            api_key: api_key.unwrap(), // validated above
+        };
+        match rt.block_on(upload::upload(&payload, &upload_config)) {
+            Ok(()) => info!("Upload complete"),
+            Err(e) => {
+                eprintln!("Upload failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    std::process::exit(0);
 }
 
 #[cfg(test)]
@@ -281,8 +315,20 @@ mod tests {
 
     #[test]
     fn test_hub_url_flag() {
-        let cli = Cli::try_parse_from(["arcanon", "--hub-url", "https://hub.arcanon.dev"]).unwrap();
-        assert_eq!(cli.hub_url.as_deref(), Some("https://hub.arcanon.dev"));
+        let cli = Cli::try_parse_from(["arcanon", "--hub-url", "https://api.arcanon.dev"]).unwrap();
+        assert_eq!(cli.hub_url.as_deref(), Some("https://api.arcanon.dev"));
+    }
+
+    #[test]
+    fn test_upload_flag() {
+        let cli = Cli::try_parse_from(["arcanon", "--upload"]).unwrap();
+        assert!(cli.upload);
+    }
+
+    #[test]
+    fn test_api_key_flag() {
+        let cli = Cli::try_parse_from(["arcanon", "--api-key", "sk-test-123"]).unwrap();
+        assert_eq!(cli.api_key.as_deref(), Some("sk-test-123"));
     }
 
     #[test]

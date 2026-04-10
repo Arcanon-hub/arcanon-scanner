@@ -19,8 +19,7 @@ fn e2e_scan_fixture_repo_produces_valid_payload() {
         root: fixture_root,
         dry_run: true, // don't actually upload
         output: None,
-        hub_url: "https://hub.example.com".to_string(),
-        api_key: "test-key".to_string(),
+        hub_url: Some("https://hub.example.com".to_string()),
         project_slug: "e2e-test".to_string(),
         plugin_filter: None,
         exclude_patterns: vec![],

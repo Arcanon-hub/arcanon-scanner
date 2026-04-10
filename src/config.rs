@@ -2,6 +2,49 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Global user config stored at `~/.arcanon/config.json`.
+/// Contains settings that apply across all repos and are never committed.
+/// Created with defaults on first run if absent.
+#[derive(Debug, Default, Deserialize)]
+pub struct GlobalConfig {
+    /// Base URL of the Arcanon API (e.g. "https://api.arcanon.dev").
+    /// Appended with /api/v1/scans/upload for the upload endpoint.
+    pub hub_url: Option<String>,
+}
+
+/// Load `~/.arcanon/config.json`, creating it with defaults if absent.
+/// Returns `GlobalConfig::default()` (all Nones) on any read/parse error.
+pub fn load_global_config() -> GlobalConfig {
+    let Some(home) = dirs::home_dir() else {
+        return GlobalConfig::default();
+    };
+    let config_dir = home.join(".arcanon");
+    let config_path = config_dir.join("config.json");
+
+    if !config_path.exists() {
+        // Bootstrap with sensible default so user can see and edit the file.
+        let _ = std::fs::create_dir_all(&config_dir);
+        let default_json = serde_json::json!({ "hub_url": "https://api.arcanon.dev" });
+        if let Ok(s) = serde_json::to_string_pretty(&default_json) {
+            let _ = std::fs::write(&config_path, s);
+        }
+        return GlobalConfig {
+            hub_url: Some("https://api.arcanon.dev".to_string()),
+        };
+    }
+
+    match std::fs::read_to_string(&config_path) {
+        Ok(contents) => serde_json::from_str::<GlobalConfig>(&contents).unwrap_or_else(|e| {
+            eprintln!("Warning: ~/.arcanon/config.json is invalid JSON: {e}. Using defaults.");
+            GlobalConfig::default()
+        }),
+        Err(e) => {
+            eprintln!("Warning: failed to read ~/.arcanon/config.json: {e}. Using defaults.");
+            GlobalConfig::default()
+        }
+    }
+}
+
 /// Top-level structure of .arcanon.toml.
 /// All fields are optional — missing sections use defaults.
 #[derive(Debug, Default, Deserialize)]
@@ -21,8 +64,6 @@ pub struct ArcanonConfig {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ScannerConfig {
-    /// Default --hub-url (secrets stay in env vars, not here).
-    pub hub_url: Option<String>,
     /// Default --project-slug.
     pub project_slug: Option<String>,
     /// Enable ML-based refinement of findings.
@@ -120,7 +161,6 @@ mod tests {
     fn test_missing_config_returns_default() {
         // Non-existent directory — no .arcanon.toml present
         let cfg = load_file_config(Path::new("/tmp/no-such-dir-arcanon-test"));
-        assert!(cfg.scanner.hub_url.is_none());
         assert!(cfg.scanner.project_slug.is_none());
     }
 
@@ -136,17 +176,12 @@ mod tests {
             r#"
 [scanner]
 project_slug = "test-project"
-hub_url = "https://hub.example.com"
 "#
         )
         .unwrap();
 
         let cfg = load_file_config(&dir);
         assert_eq!(cfg.scanner.project_slug.as_deref(), Some("test-project"));
-        assert_eq!(
-            cfg.scanner.hub_url.as_deref(),
-            Some("https://hub.example.com")
-        );
 
         std::fs::remove_file(&config_path).ok();
     }
@@ -349,7 +384,6 @@ ignore = false
         let toml_str = r#"
 [scanner]
 project_slug = "my-project"
-hub_url = "https://hub.example.com"
 
 [scanner.patterns]
 disabled = ["ts-axios"]
