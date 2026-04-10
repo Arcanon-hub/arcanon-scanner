@@ -209,8 +209,7 @@ impl LanguagePlugin for RustLangPlugin {
                             handler: None,
                             kind: "rest".to_string(),
                             confidence: Confidence::High,
-                            extraction_method: "ast_actix_macro".to_string(),
-                            ..Default::default()
+                            extraction_method: "ast_actix_macro".to_string()
                         });
                     }
                 }
@@ -251,8 +250,7 @@ impl LanguagePlugin for RustLangPlugin {
                             handler: Some(handler),
                             kind: "rest".to_string(),
                             confidence: Confidence::High,
-                            extraction_method: "ast_axum_route".to_string(),
-                            ..Default::default()
+                            extraction_method: "ast_axum_route".to_string()
                         });
                     }
                 }

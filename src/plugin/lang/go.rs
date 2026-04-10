@@ -230,8 +230,7 @@ fn detect_routes(
                             handler: None,
                             kind: "rest".to_string(),
                             confidence: Confidence::High,
-                            extraction_method: "go-gin-echo-fiber-route".to_string(),
-                            ..Default::default()
+                            extraction_method: "go-gin-echo-fiber-route".to_string()
                         });
                     }
                 }
@@ -261,8 +260,7 @@ fn detect_routes(
                             handler: None,
                             kind: "rest".to_string(),
                             confidence: Confidence::High,
-                            extraction_method: "go-chi-route".to_string(),
-                            ..Default::default()
+                            extraction_method: "go-chi-route".to_string()
                         });
                     }
                 }
@@ -284,8 +282,7 @@ fn detect_routes(
                         handler: None,
                         kind: "rest".to_string(),
                         confidence: Confidence::Medium,
-                        extraction_method: "go-gorilla-mux-route".to_string(),
-                        ..Default::default()
+                        extraction_method: "go-gorilla-mux-route".to_string()
                     });
                 }
             }
@@ -309,8 +306,7 @@ fn detect_routes(
                         handler: None,
                         kind: "rest".to_string(),
                         confidence: Confidence::Medium,
-                        extraction_method: "go-http-handlefunc".to_string(),
-                        ..Default::default()
+                        extraction_method: "go-http-handlefunc".to_string()
                     });
                 }
             }

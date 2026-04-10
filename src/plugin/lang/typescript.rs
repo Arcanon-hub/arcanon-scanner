@@ -153,8 +153,7 @@ fn extract_express_routes(
             },
             kind: "rest".to_string(),
             confidence: Confidence::High,
-            extraction_method: "ast_express".to_string(),
-            ..Default::default()
+            extraction_method: "ast_express".to_string()
         });
     }
 }
@@ -280,8 +279,7 @@ fn extract_nestjs_routes(
                     handler: None,
                     kind: "rest".to_string(),
                     confidence: Confidence::High,
-                    extraction_method: "ast_nestjs_two_phase".to_string(),
-                    ..Default::default()
+                    extraction_method: "ast_nestjs_two_phase".to_string()
                 });
             }
         }
@@ -369,8 +367,7 @@ fn extract_fastify_routes(
             },
             kind: "rest".to_string(),
             confidence: Confidence::High,
-            extraction_method: "ast_fastify".to_string(),
-            ..Default::default()
+            extraction_method: "ast_fastify".to_string()
         });
     }
 }
@@ -446,8 +443,7 @@ fn extract_nextjs_routes(
             handler: None,
             kind: "rest".to_string(),
             confidence: Confidence::High,
-            extraction_method: "nextjs_api_routes".to_string(),
-            ..Default::default()
+            extraction_method: "nextjs_api_routes".to_string()
         });
     }
 }

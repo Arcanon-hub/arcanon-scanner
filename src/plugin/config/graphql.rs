@@ -103,8 +103,7 @@ fn parse_graphql(
                                 handler: Some(field_name.clone()),
                                 kind: "graphql".to_string(),
                                 confidence: Confidence::High,
-                                extraction_method: "spec:graphql".to_string(),
-                                ..Default::default()
+                                extraction_method: "spec:graphql".to_string()
                                 });
 
                         } else {
@@ -130,8 +129,7 @@ fn parse_graphql(
                     connection_ref: None,
                     fields,
                     confidence: Confidence::High,
-                    extraction_method: "spec:graphql".to_string(),
-                    ..Default::default()
+                    extraction_method: "spec:graphql".to_string()
                     });
 
             }
