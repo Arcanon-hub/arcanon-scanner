@@ -20,7 +20,10 @@ target
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 *.json
-!models/
+!models/tokenizer.json
+
+# ML model files are too large for git — distribute out-of-band
+models/*.onnx
 
 # Claude Code worktrees
 .claude/
