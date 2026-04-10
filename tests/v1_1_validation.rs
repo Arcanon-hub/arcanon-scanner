@@ -95,6 +95,7 @@ fn make_config(root: PathBuf) -> arcanon::core::scanner::ScannerConfig {
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
         user_pattern_overrides: vec![],
         disabled_patterns: vec![],
+        ..Default::default()
     }
 }
 
@@ -172,6 +173,7 @@ fn fastapi_docstring_and_kubernetes() {
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
         user_pattern_overrides: vec![py_kubernetes_pattern(), py_opcua_pattern()],
         disabled_patterns: vec![],
+        ..Default::default()
     };
 
     let payload = {
@@ -343,6 +345,7 @@ fn full_fixture_scan_with_arcanon_toml() {
         // Inject py-kubernetes so the full scan also finds kubernetes connections
         user_pattern_overrides: vec![py_kubernetes_pattern(), py_opcua_pattern()],
         disabled_patterns: vec![],
+        ..Default::default()
     };
 
     let payload = {

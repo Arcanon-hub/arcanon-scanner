@@ -22,6 +22,7 @@ fn test_polyglot_fixture_end_to_end() {
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
         user_pattern_overrides: vec![],
         disabled_patterns: vec![],
+        ..Default::default()
     };
 
     let payload = {

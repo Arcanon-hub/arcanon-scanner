@@ -23,7 +23,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 /// Configuration for a scanner run.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ScannerConfig {
     /// Root directory to scan
     pub root: PathBuf,
@@ -49,6 +49,8 @@ pub struct ScannerConfig {
     pub user_pattern_overrides: Vec<crate::config::PatternOverride>,
     /// Pattern IDs to disable from .arcanon.toml [scanner.patterns] disabled
     pub disabled_patterns: Vec<String>,
+    /// Enable ML-based refinement of findings
+    pub ml_refine: bool,
 }
 
 /// Git-related CLI overrides.
@@ -400,8 +402,14 @@ pub async fn run(config: &ScannerConfig) -> Result<payload::ScanPayloadV1> {
     }
 
     // Step 11: Resolve intra-repo connections
-    let merged = resolver::resolve(merged);
+    let mut merged = resolver::resolve(merged);
     debug!("Resolved connections");
+
+    // Step 11.5: ML Refinement (Inference Bridge)
+    if config.ml_refine {
+        let ml_engine = crate::ml::ArcanonML::new(None);
+        ml_engine.refine(&mut merged);
+    }
 
     // Step 12: Record end time and assemble payload
     let completed_at = now_rfc3339();
@@ -642,6 +650,7 @@ pub fn build_libres_connections(
                             ),
                             dependency: Some(resolved.lib_name.clone()),
                             evidence: Some(evidence_line.trim().to_string()),
+                            ..Default::default()
                         });
                     }
                 }
@@ -826,6 +835,7 @@ mod tests {
             confidence: Confidence::High,
             dependency: None,
             evidence: None,
+            ..Default::default()
         };
 
         // Wrapper-trace connection for the same file (with line suffix) + same protocol
@@ -840,6 +850,7 @@ mod tests {
             confidence: Confidence::Medium,
             dependency: None,
             evidence: None,
+            ..Default::default()
         };
 
         // Reproduce the dedup logic from scanner.rs
@@ -879,8 +890,14 @@ mod tests {
     #[test]
     fn test_extraction_method_score_values() {
         assert_eq!(extraction_method_score("pattern:py-redis"), 3);
-        assert_eq!(extraction_method_score("wrapper_trace:connect\u{2192}Client"), 2);
-        assert_eq!(extraction_method_score("library_resolution:redis-py\u{2192}redis"), 1);
+        assert_eq!(
+            extraction_method_score("wrapper_trace:connect\u{2192}Client"),
+            2
+        );
+        assert_eq!(
+            extraction_method_score("library_resolution:redis-py\u{2192}redis"),
+            1
+        );
         assert_eq!(extraction_method_score("ast:python"), 0);
         assert_eq!(extraction_method_score("compose"), 0);
     }
@@ -927,6 +944,7 @@ mod tests {
             confidence: Confidence::High,
             dependency: Some("py-redis".to_string()),
             evidence: None,
+            ..Default::default()
         };
         let libres_conn = ConnectionInfo {
             source_file: "src/app.py".to_string(),
@@ -939,10 +957,15 @@ mod tests {
             confidence: Confidence::Medium,
             dependency: Some("redis-py".to_string()),
             evidence: None,
+            ..Default::default()
         };
 
         let result = run_final_dedup(vec![pattern_conn, libres_conn]);
-        assert_eq!(result.len(), 1, "duplicate (same key) must collapse to one entry");
+        assert_eq!(
+            result.len(),
+            1,
+            "duplicate (same key) must collapse to one entry"
+        );
         assert!(
             result[0].extraction_method.starts_with("pattern:"),
             "pattern: must win over library_resolution: (got {})",
@@ -965,6 +988,7 @@ mod tests {
             confidence: Confidence::Medium,
             dependency: None,
             evidence: None,
+            ..Default::default()
         };
         let libres_conn = ConnectionInfo {
             source_file: "src/app.py".to_string(),
@@ -977,10 +1001,15 @@ mod tests {
             confidence: Confidence::Medium,
             dependency: Some("redis-py".to_string()),
             evidence: None,
+            ..Default::default()
         };
 
         let result = run_final_dedup(vec![wrapper_conn, libres_conn]);
-        assert_eq!(result.len(), 1, "duplicate (same key) must collapse to one entry");
+        assert_eq!(
+            result.len(),
+            1,
+            "duplicate (same key) must collapse to one entry"
+        );
         assert!(
             result[0].extraction_method.starts_with("wrapper_trace:"),
             "wrapper_trace: must win over library_resolution: (got {})",
@@ -1003,6 +1032,7 @@ mod tests {
             confidence: Confidence::High,
             dependency: Some("py-redis".to_string()),
             evidence: None,
+            ..Default::default()
         };
         let wrapper_conn = ConnectionInfo {
             source_file: "src/app.py".to_string(),
@@ -1015,10 +1045,15 @@ mod tests {
             confidence: Confidence::Medium,
             dependency: None,
             evidence: None,
+            ..Default::default()
         };
 
         let result = run_final_dedup(vec![pattern_conn, wrapper_conn]);
-        assert_eq!(result.len(), 1, "duplicate (same key) must collapse to one entry");
+        assert_eq!(
+            result.len(),
+            1,
+            "duplicate (same key) must collapse to one entry"
+        );
         assert!(
             result[0].extraction_method.starts_with("pattern:"),
             "pattern: must win over wrapper_trace: (got {})",
@@ -1041,6 +1076,7 @@ mod tests {
             confidence: Confidence::High,
             dependency: Some("py-redis".to_string()),
             evidence: None,
+            ..Default::default()
         };
         let conn_b = ConnectionInfo {
             source_file: "src/app.py".to_string(),
@@ -1053,6 +1089,7 @@ mod tests {
             confidence: Confidence::High,
             dependency: Some("py-redis".to_string()),
             evidence: None,
+            ..Default::default()
         };
 
         let result = run_final_dedup(vec![conn_a, conn_b]);
@@ -1079,6 +1116,7 @@ mod tests {
             confidence: Confidence::Medium,
             dependency: Some("redis-py".to_string()),
             evidence: None,
+            ..Default::default()
         };
         // pattern connection with specific target_name
         let pattern_conn = ConnectionInfo {
@@ -1092,6 +1130,7 @@ mod tests {
             confidence: Confidence::High,
             dependency: Some("py-redis".to_string()),
             evidence: None,
+            ..Default::default()
         };
 
         let result = run_final_dedup(vec![libres_conn, pattern_conn]);
@@ -1117,6 +1156,7 @@ mod tests {
             extraction_method: "library_resolution:redis-py→redis".to_string(),
             dependency: Some("redis-py".to_string()),
             evidence: None,
+            ..Default::default()
         };
         assert_eq!(
             conn.dependency,

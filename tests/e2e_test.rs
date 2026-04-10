@@ -28,6 +28,7 @@ fn e2e_scan_fixture_repo_produces_valid_payload() {
         git_overrides: arcanon::core::scanner::GitOverrides::default(),
         user_pattern_overrides: vec![],
         disabled_patterns: vec![],
+        ..Default::default()
     };
 
     let payload = {

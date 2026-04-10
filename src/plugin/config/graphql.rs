@@ -104,7 +104,9 @@ fn parse_graphql(
                                 kind: "graphql".to_string(),
                                 confidence: Confidence::High,
                                 extraction_method: "spec:graphql".to_string(),
-                            });
+                                ..Default::default()
+                                });
+
                         } else {
                             // Regular type definitions get fields
                             fields.push(FieldInfo {
@@ -129,7 +131,9 @@ fn parse_graphql(
                     fields,
                     confidence: Confidence::High,
                     extraction_method: "spec:graphql".to_string(),
-                });
+                    ..Default::default()
+                    });
+
             }
         }
 

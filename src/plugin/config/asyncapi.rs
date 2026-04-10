@@ -112,7 +112,9 @@ fn parse_asyncapi(content: &str, relative_path: &str) -> Result<Vec<EndpointInfo
                     kind: "asyncapi".to_string(),
                     confidence: Confidence::High,
                     extraction_method: "spec:asyncapi".to_string(),
-                });
+                    ..Default::default()
+                    });
+
             }
 
             // Process subscribe operation
@@ -125,7 +127,9 @@ fn parse_asyncapi(content: &str, relative_path: &str) -> Result<Vec<EndpointInfo
                     kind: "asyncapi".to_string(),
                     confidence: Confidence::High,
                     extraction_method: "spec:asyncapi".to_string(),
-                });
+                    ..Default::default()
+                    });
+
             }
         }
     }
