@@ -22,15 +22,14 @@ pub fn load_global_config() -> GlobalConfig {
     let config_path = config_dir.join("config.json");
 
     if !config_path.exists() {
-        // Bootstrap with sensible default so user can see and edit the file.
+        // Write a discoverable template so the user knows where to configure hub_url,
+        // but return None so --upload still requires an explicit value from the user.
         let _ = std::fs::create_dir_all(&config_dir);
-        let default_json = serde_json::json!({ "hub_url": "https://api.arcanon.dev" });
-        if let Ok(s) = serde_json::to_string_pretty(&default_json) {
+        let template = serde_json::json!({ "hub_url": "https://api.arcanon.dev" });
+        if let Ok(s) = serde_json::to_string_pretty(&template) {
             let _ = std::fs::write(&config_path, s);
         }
-        return GlobalConfig {
-            hub_url: Some("https://api.arcanon.dev".to_string()),
-        };
+        return GlobalConfig::default();
     }
 
     match std::fs::read_to_string(&config_path) {

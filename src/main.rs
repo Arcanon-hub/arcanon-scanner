@@ -41,7 +41,7 @@ pub struct Cli {
     pub project_slug: Option<String>,
 
     /// Write payload JSON to file instead of default output
-    #[arg(long)]
+    #[arg(long, conflicts_with = "upload")]
     pub output: Option<PathBuf>,
 
     /// Parse and print payload to stdout, don't write or upload
