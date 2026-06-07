@@ -15,7 +15,7 @@ path = "src/main.rs"
 clap = { version = "4.6", features = ["derive", "env"] }
 
 # Git context (minimal features — only repo discovery, remotes, HEAD ref)
-gix = { version = "0.81", default-features = false, features = ["basic", "sha1"] }
+gix = { version = "0.84", default-features = false, features = ["basic", "sha1"] }
 
 # AST parsing — pin grammar crates to prevent ABI split (PITFALLS.md Pitfall 1)
 tree-sitter = "0.26.8"
@@ -28,23 +28,23 @@ tree-sitter-rust = "0.24.2"
 tree-sitter-ruby = "0.23.1"
 
 # File walking
-ignore = "0.4.25"
+ignore = "0.4.26"
 globset = "0.4.18"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 toml = "1.1.2"
-serde_yaml_bw = "2.5.4"  # replaces deprecated serde_yaml (PITFALLS.md Pitfall 2)
+serde_yaml_bw = "2.5.6"  # replaces deprecated serde_yaml (PITFALLS.md Pitfall 2)
 
 # HTTP upload (rustls only — no OpenSSL, musl-safe)
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 
 # Async runtime (reqwest only — NOT for plugins; plugins use rayon)
-tokio = { version = "1.51", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "time"] }
 
 # CPU-bound parallelism for plugin execution
-rayon = "1.11.0"
+rayon = "1.12.0"
 
 # Error handling
 anyhow = "1.0.102"
@@ -77,21 +77,21 @@ protobuf-parse = { version = "3.7", default-features = false }
 # On Linux/macOS there is no CRT concept so static linking works fine.
 # default-features = false drops esaxx_rs (C++ SentencePiece extension).
 # CodeBERT uses BPE which is pure Rust — esaxx_rs is never needed.
-tokenizers = { version = "0.15.2", default-features = false, features = ["onig"] }
+tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
 
 # Linux and macOS: pre-built ONNX Runtime binaries available, link statically.
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 ort = { version = "= 2.0.0-rc.9" }
-ort-sys = { version = "= 2.0.0-rc.9" }
+ort-sys = { version = "= 2.0.0-rc.10" }
 
 # Windows: load-dynamic avoids CRT mismatch (/MD vs /MT from esaxx_rs).
 [target.'cfg(target_os = "windows")'.dependencies]
 ort = { version = "= 2.0.0-rc.9", features = ["load-dynamic"] }
-ort-sys = { version = "= 2.0.0-rc.9" }
+ort-sys = { version = "= 2.0.0-rc.10" }
 
 [dev-dependencies]
 tempfile = "3"
-serial_test = "2"
+serial_test = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
 
 [profile.release]
